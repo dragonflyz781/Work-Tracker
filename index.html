@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Round Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ===== Leaflet core (inlined — CDN stylesheets are not permitted in this runtime) ===== */
+/* required styles */
+
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+	}
+.leaflet-container {
+	overflow: hidden;
+	}
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+	-webkit-user-select: none;
+	   -moz-user-select: none;
+	        user-select: none;
+	  -webkit-user-drag: none;
+	}
+/* Prevents IE11 from highlighting tiles in blue */
+.leaflet-tile::selection {
+	background: transparent;
+}
+/* Safari renders non-retina tile on retina better with this, but Chrome is worse */
+.leaflet-safari .leaflet-tile {
+	image-rendering: -webkit-optimize-contrast;
+	}
+/* hack that prevents hw layers "stretching" when loading new tiles */
+.leaflet-safari .leaflet-tile-container {
+	width: 1600px;
+	height: 1600px;
+	-webkit-transform-origin: 0 0;
+	}
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+	display: block;
+	}
+/* .leaflet-container svg: reset svg max-width decleration shipped in Joomla! (joomla.org) 3.x */
+/* .leaflet-container img: map is broken in FF if you have max-width: 100% on tiles */
+.leaflet-container .leaflet-overlay-pane svg {
+	max-width: none !important;
+	max-height: none !important;
+	}
+.leaflet-container .leaflet-marker-pane img,
+.leaflet-container .leaflet-shadow-pane img,
+.leaflet-container .leaflet-tile-pane img,
+.leaflet-container img.leaflet-image-layer,
+.leaflet-container .leaflet-tile {
+	max-width: none !important;
+	max-height: none !important;
+	width: auto;
+	padding: 0;
+	}
+
+.leaflet-container img.leaflet-tile {
+	/* See: https://bugs.chromium.org/p/chromium/issues/detail?id=600120 */
+	mix-blend-mode: plus-lighter;
+}
+
+.leaflet-container.leaflet-touch-zoom {
+	-ms-touch-action: pan-x pan-y;
+	touch-action: pan-x pan-y;
+	}
+.leaflet-container.leaflet-touch-drag {
+	-ms-touch-action: pinch-zoom;
+	/* Fallback for FF which doesn't support pinch-zoom */
+	touch-action: none;
+	touch-action: pinch-zoom;
+}
+.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {
+	-ms-touch-action: none;
+	touch-action: none;
+}
+.leaflet-container {
+	-webkit-tap-highlight-color: transparent;
+}
+.leaflet-container a {
+	-webkit-tap-highlight-color: rgba(51, 181, 229, 0.4);
+}
+.leaflet-tile {
+	filter: inherit;
+	visibility: hidden;
+	}
+.leaflet-tile-loaded {
+	visibility: inherit;
+	}
+.leaflet-zoom-box {
+	width: 0;
+	height: 0;
+	-moz-box-sizing: border-box;
+	     box-sizing: border-box;
+	z-index: 800;
+	}
+/* workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=888319 */
+.leaflet-overlay-pane svg {
+	-moz-user-select: none;
+	}
+
+.leaflet-pane         { z-index: 400; }
+
+.leaflet-tile-pane    { z-index: 200; }
+.leaflet-overlay-pane { z-index: 400; }
+.leaflet-shadow-pane  { z-index: 500; }
+.leaflet-marker-pane  { z-index: 600; }
+.leaflet-tooltip-pane   { z-index: 650; }
+.leaflet-popup-pane   { z-index: 700; }
+
+.leaflet-map-pane canvas { z-index: 100; }
+.leaflet-map-pane svg    { z-index: 200; }
+
+.leaflet-vml-shape {
+	width: 1px;
+	height: 1px;
+	}
+.lvml {
+	behavior: url(#default#VML);
+	display: inline-block;
+	position: absolute;
+	}
+
+
+/* control positioning */
+
+.leaflet-control {
+	position: relative;
+	z-index: 800;
+	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
+	pointer-events: auto;
+	}
+.leaflet-top,
+.leaflet-bottom {
+	position: absolute;
+	z-index: 1000;
+	pointer-events: none;
+	}
+.leaflet-top {
+	top: 0;
+	}
+.leaflet-right {
+	right: 0;
+	}
+.leaflet-bottom {
+	bottom: 0;
+	}
+.leaflet-left {
+	left: 0;
+	}
+.leaflet-control {
+	float: left;
+	clear: both;
+	}
+.leaflet-right .leaflet-control {
+	float: right;
+	}
+.leaflet-top .leaflet-control {
+	margin-top: 10px;
+	}
+.leaflet-bottom .leaflet-control {
+	margin-bottom: 10px;
+	}
+.leaflet-left .leaflet-control {
+	margin-left: 10px;
+	}
+.leaflet-right .leaflet-control {
+	margin-right: 10px;
+	}
+
+
+/* zoom and fade animations */
+
+.leaflet-fade-anim .leaflet-popup {
+	opacity: 0;
+	-webkit-transition: opacity 0.2s linear;
+	   -moz-transition: opacity 0.2s linear;
+	        transition: opacity 0.2s linear;
+	}
+.leaflet-fade-anim .leaflet-map-pane .leaflet-popup {
+	opacity: 1;
+	}
+.leaflet-zoom-animated {
+	-webkit-transform-origin: 0 0;
+	    -ms-transform-origin: 0 0;
+	        transform-origin: 0 0;
+	}
+svg.leaflet-zoom-animated {
+	will-change: transform;
+}
+
+.leaflet-zoom-anim .leaflet-zoom-animated {
+	-webkit-transition: -webkit-transform 0.25s cubic-bezier(0,0,0.25,1);
+	   -moz-transition:    -moz-transform 0.25s cubic-bezier(0,0,0.25,1);
+	        transition:         transform 0.25s cubic-bezier(0,0,0.25,1);
+	}
+.leaflet-zoom-anim .leaflet-tile,
+.leaflet-pan-anim .leaflet-tile {
+	-webkit-transition: none;
+	   -moz-transition: none;
+	        transition: none;
+	}
+
+.leaflet-zoom-anim .leaflet-zoom-hide {
+	visibility: hidden;
+	}
+
+
+/* cursors */
+
+.leaflet-interactive {
+	cursor: pointer;
+	}
+.leaflet-grab {
+	cursor: -webkit-grab;
+	cursor:    -moz-grab;
+	cursor:         grab;
+	}
+.leaflet-crosshair,
+.leaflet-crosshair .leaflet-interactive {
+	cursor: crosshair;
+	}
+.leaflet-popup-pane,
+.leaflet-control {
+	cursor: auto;
+	}
+.leaflet-dragging .leaflet-grab,
+.leaflet-dragging .leaflet-grab .leaflet-interactive,
+.leaflet-dragging .leaflet-marker-draggable {
+	cursor: move;
+	cursor: -webkit-grabbing;
+	cursor:    -moz-grabbing;
+	cursor:         grabbing;
+	}
+
+/* marker & overlays interactivity */
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-image-layer,
+.leaflet-pane > svg path,
+.leaflet-tile-container {
+	pointer-events: none;
+	}
+
+.leaflet-marker-icon.leaflet-interactive,
+.leaflet-image-layer.leaflet-interactive,
+.leaflet-pane > svg path.leaflet-interactive,
+svg.leaflet-image-layer.leaflet-interactive path {
+	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
+	pointer-events: auto;
+	}
+
+/* visual tweaks */
+
+.leaflet-container {
+	background: #ddd;
+	outline-offset: 1px;
+	}
+.leaflet-container a {
+	color: #0078A8;
+	}
+.leaflet-zoom-box {
+	border: 2px dotted #38f;
+	background: rgba(255,255,255,0.5);
+	}
+
+
+/* general typography */
+.leaflet-container {
+	font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+	font-size: 12px;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	}
+
+
+/* general toolbar styles */
+
+.leaflet-bar {
+	box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+	border-radius: 4px;
+	}
+.leaflet-bar a {
+	background-color: #fff;
+	border-bottom: 1px solid #ccc;
+	width: 26px;
+	height: 26px;
+	line-height: 26px;
+	display: block;
+	text-align: center;
+	text-decoration: none;
+	color: black;
+	}
+.leaflet-bar a,
+.leaflet-control-layers-toggle {
+	background-position: 50% 50%;
+	background-repeat: no-repeat;
+	display: block;
+	}
+.leaflet-bar a:hover,
+.leaflet-bar a:focus {
+	background-color: #f4f4f4;
+	}
+.leaflet-bar a:first-child {
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+	}
+.leaflet-bar a:last-child {
+	border-bottom-left-radius: 4px;
+	border-bottom-right-radius: 4px;
+	border-bottom: none;
+	}
+.leaflet-bar a.leaflet-disabled {
+	cursor: default;
+	background-color: #f4f4f4;
+	color: #bbb;
+	}
+
+.leaflet-touch .leaflet-bar a {
+	width: 30px;
+	height: 30px;
+	line-height: 30px;
+	}
+.leaflet-touch .leaflet-bar a:first-child {
+	border-top-left-radius: 2px;
+	border-top-right-radius: 2px;
+	}
+.leaflet-touch .leaflet-bar a:last-child {
+	border-bottom-left-radius: 2px;
+	border-bottom-right-radius: 2px;
+	}
+
+/* zoom control */
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+	font: bold 18px 'Lucida Console', Monaco, monospace;
+	text-indent: 1px;
+	}
+
+.leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out  {
+	font-size: 22px;
+	}
+
+
+/* layers control */
+
+.leaflet-control-layers {
+	box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+	background: #fff;
+	border-radius: 5px;
+	}
+.leaflet-control-layers-toggle {
+	background-image: url(images/layers.png);
+	width: 36px;
+	height: 36px;
+	}
+.leaflet-retina .leaflet-control-layers-toggle {
+	background-image: url(images/layers-2x.png);
+	background-size: 26px 26px;
+	}
+.leaflet-touch .leaflet-control-layers-toggle {
+	width: 44px;
+	height: 44px;
+	}
+.leaflet-control-layers .leaflet-control-layers-list,
+.leaflet-control-layers-expanded .leaflet-control-layers-toggle {
+	display: none;
+	}
+.leaflet-control-layers-expanded .leaflet-control-layers-list {
+	display: block;
+	position: relative;
+	}
+.leaflet-control-layers-expanded {
+	padding: 6px 10px 6px 6px;
+	color: #333;
+	background: #fff;
+	}
+.leaflet-control-layers-scrollbar {
+	overflow-y: scroll;
+	overflow-x: hidden;
+	padding-right: 5px;
+	}
+.leaflet-control-layers-selector {
+	margin-top: 2px;
+	position: relative;
+	top: 1px;
+	}
+.leaflet-control-layers label {
+	display: block;
+	font-size: 13px;
+	font-size: 1.08333em;
+	}
+.leaflet-control-layers-separator {
+	height: 0;
+	border-top: 1px solid #ddd;
+	margin: 5px -10px 5px -6px;
+	}
+
+/* Default icon URLs */
+.leaflet-default-icon-path { /* used only in path-guessing heuristic, see L.Icon.Default */
+	background-image: url(images/marker-icon.png);
+	}
+
+
+/* attribution and scale controls */
+
+.leaflet-container .leaflet-control-attribution {
+	background: #fff;
+	background: rgba(255, 255, 255, 0.8);
+	margin: 0;
+	}
+.leaflet-control-attribution,
+.leaflet-control-scale-line {
+	padding: 0 5px;
+	color: #333;
+	line-height: 1.4;
+	}
+.leaflet-control-attribution a {
+	text-decoration: none;
+	}
+.leaflet-control-attribution a:hover,
+.leaflet-control-attribution a:focus {
+	text-decoration: underline;
+	}
+.leaflet-attribution-flag {
+	display: inline !important;
+	vertical-align: baseline !important;
+	width: 1em;
+	height: 0.6669em;
+	}
+.leaflet-left .leaflet-control-scale {
+	margin-left: 5px;
+	}
+.leaflet-bottom .leaflet-control-scale {
+	margin-bottom: 5px;
+	}
+.leaflet-control-scale-line {
+	border: 2px solid #777;
+	border-top: none;
+	line-height: 1.1;
+	padding: 2px 5px 1px;
+	white-space: nowrap;
+	-moz-box-sizing: border-box;
+	     box-sizing: border-box;
+	background: rgba(255, 255, 255, 0.8);
+	text-shadow: 1px 1px #fff;
+	}
+.leaflet-control-scale-line:not(:first-child) {
+	border-top: 2px solid #777;
+	border-bottom: none;
+	margin-top: -2px;
+	}
+.leaflet-control-scale-line:not(:first-child):not(:last-child) {
+	border-bottom: 2px solid #777;
+	}
+
+.leaflet-touch .leaflet-control-attribution,
+.leaflet-touch .leaflet-control-layers,
+.leaflet-touch .leaflet-bar {
+	box-shadow: none;
+	}
+.leaflet-touch .leaflet-control-layers,
+.leaflet-touch .leaflet-bar {
+	border: 2px solid rgba(0,0,0,0.2);
+	background-clip: padding-box;
+	}
+
+
+/* popup */
+
+.leaflet-popup {
+	position: absolute;
+	text-align: center;
+	margin-bottom: 20px;
+	}
+.leaflet-popup-content-wrapper {
+	padding: 1px;
+	text-align: left;
+	border-radius: 12px;
+	}
+.leaflet-popup-content {
+	margin: 13px 24px 13px 20px;
+	line-height: 1.3;
+	font-size: 13px;
+	font-size: 1.08333em;
+	min-height: 1px;
+	}
+.leaflet-popup-content p {
+	margin: 17px 0;
+	margin: 1.3em 0;
+	}
+.leaflet-popup-tip-container {
+	width: 40px;
+	height: 20px;
+	position: absolute;
+	left: 50%;
+	margin-top: -1px;
+	margin-left: -20px;
+	overflow: hidden;
+	pointer-events: none;
+	}
+.leaflet-popup-tip {
+	width: 17px;
+	height: 17px;
+	padding: 1px;
+
+	margin: -10px auto 0;
+	pointer-events: auto;
+
+	-webkit-transform: rotate(45deg);
+	   -moz-transform: rotate(45deg);
+	    -ms-transform: rotate(45deg);
+	        transform: rotate(45deg);
+	}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+	background: white;
+	color: #333;
+	box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+	}
+.leaflet-container a.leaflet-popup-close-button {
+	position: absolute;
+	top: 0;
+	right: 0;
+	border: none;
+	text-align: center;
+	width: 24px;
+	height: 24px;
+	font: 16px/24px Tahoma, Verdana, sans-serif;
+	color: #757575;
+	text-decoration: none;
+	background: transparent;
+	}
+.leaflet-container a.leaflet-popup-close-button:hover,
+.leaflet-container a.leaflet-popup-close-button:focus {
+	color: #585858;
+	}
+.leaflet-popup-scrolled {
+	overflow: auto;
+	}
+
+.leaflet-oldie .leaflet-popup-content-wrapper {
+	-ms-zoom: 1;
+	}
+.leaflet-oldie .leaflet-popup-tip {
+	width: 24px;
+	margin: 0 auto;
+
+	-ms-filter: "progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678)";
+	filter: progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678);
+	}
+
+.leaflet-oldie .leaflet-control-zoom,
+.leaflet-oldie .leaflet-control-layers,
+.leaflet-oldie .leaflet-popup-content-wrapper,
+.leaflet-oldie .leaflet-popup-tip {
+	border: 1px solid #999;
+	}
+
+
+/* div icon */
+
+.leaflet-div-icon {
+	background: #fff;
+	border: 1px solid #666;
+	}
+
+
+/* Tooltip */
+/* Base styles for the element that has a tooltip */
+.leaflet-tooltip {
+	position: absolute;
+	padding: 6px;
+	background-color: #fff;
+	border: 1px solid #fff;
+	border-radius: 3px;
+	color: #222;
+	white-space: nowrap;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	pointer-events: none;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+	}
+.leaflet-tooltip.leaflet-interactive {
+	cursor: pointer;
+	pointer-events: auto;
+	}
+.leaflet-tooltip-top:before,
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+	position: absolute;
+	pointer-events: none;
+	border: 6px solid transparent;
+	background: transparent;
+	content: "";
+	}
+
+/* Directions */
+
+.leaflet-tooltip-bottom {
+	margin-top: 6px;
+}
+.leaflet-tooltip-top {
+	margin-top: -6px;
+}
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-top:before {
+	left: 50%;
+	margin-left: -6px;
+	}
+.leaflet-tooltip-top:before {
+	bottom: 0;
+	margin-bottom: -12px;
+	border-top-color: #fff;
+	}
+.leaflet-tooltip-bottom:before {
+	top: 0;
+	margin-top: -12px;
+	margin-left: -6px;
+	border-bottom-color: #fff;
+	}
+.leaflet-tooltip-left {
+	margin-left: -6px;
+}
+.leaflet-tooltip-right {
+	margin-left: 6px;
+}
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+	top: 50%;
+	margin-top: -6px;
+	}
+.leaflet-tooltip-left:before {
+	right: 0;
+	margin-right: -12px;
+	border-left-color: #fff;
+	}
+.leaflet-tooltip-right:before {
+	left: 0;
+	margin-left: -12px;
+	border-right-color: #fff;
+	}
+
+/* Printing */
+
+@media print {
+	/* Prevent printers from removing background-images of controls. */
+	.leaflet-control {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+		}
+	}
+
+
+/* ===== Design tokens ===== */
+:root{
+  --bg:#f4f6f5; --surface:#ffffff; --surface-2:#eef1f0; --line:#d7dedb;
+  --text:#151b1a; --muted:#5c6b67;
+  --accent:#e0631a; --accent-ink:#ffffff;
+  --route:#0e8f7d; --stop:#c98a00; --stop-ink:#1a1200;
+  --danger:#b3391f;
+  --shadow: 0 10px 30px rgba(15,25,22,.14);
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161a; --surface:#171e22; --surface-2:#1e2731; --line:#2b363d;
+    --text:#eaf1ee; --muted:#93a3a0;
+    --accent:#ff7d3d; --accent-ink:#1a0e05;
+    --route:#3fd6bc; --stop:#ffcc55; --stop-ink:#1a1200;
+    --danger:#ff7561;
+    --shadow: 0 10px 34px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161a; --surface:#171e22; --surface-2:#1e2731; --line:#2b363d;
+  --text:#eaf1ee; --muted:#93a3a0;
+  --accent:#ff7d3d; --accent-ink:#1a0e05;
+  --route:#3fd6bc; --stop:#ffcc55; --stop-ink:#1a1200;
+  --danger:#ff7561;
+  --shadow: 0 10px 34px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"IBM Plex Sans", -apple-system, sans-serif;
+  overflow:hidden;
+  display:flex; flex-direction:column;
+}
+.num, .stat-value, .route-badge, .stop-marker span{ font-family:"Big Shoulders Display", sans-serif; }
+
+/* ---------- Top bar ---------- */
+.topbar{
+  display:flex; align-items:center; gap:10px;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  background:var(--surface); border-bottom:1px solid var(--line);
+  z-index:500; flex:0 0 auto;
+}
+.icon-btn{
+  width:38px; height:38px; border-radius:10px; border:1px solid var(--line);
+  background:var(--surface-2); color:var(--text);
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; cursor:pointer; flex:0 0 auto;
+}
+.icon-btn:active{ transform:scale(.94); }
+.topbar-title{ flex:1 1 auto; min-width:0; }
+.topbar-title h1{
+  margin:0; font-size:19px; font-weight:600; line-height:1.15;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.topbar-title .sub{ font-size:11.5px; color:var(--muted); }
+.theme-toggle{ font-size:15px; }
+
+/* ---------- Tabs ---------- */
+.tabs{
+  display:flex; gap:6px; padding:8px 14px; background:var(--surface);
+  border-bottom:1px solid var(--line); flex:0 0 auto;
+}
+.tab-btn{
+  flex:1; border:none; background:transparent; color:var(--muted);
+  font-family:"IBM Plex Sans", sans-serif; font-weight:600; font-size:13.5px;
+  padding:8px 0; border-radius:9px; cursor:pointer;
+}
+.tab-btn.active{ background:var(--surface-2); color:var(--text); }
+
+.view{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+#views{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+
+/* Wide screens (desktop / GitHub Pages use): show Map and Schedule
+   side by side as two full-height panes instead of tab-switching. */
+@media (min-width:880px){
+  .tabs{ display:none; }
+  #views{ flex-direction:row; }
+  #mapView{ display:flex !important; flex:1 1 58%; min-width:0; border-right:1px solid var(--line); }
+  #scheduleView{ display:flex !important; flex:1 1 42%; min-width:340px; max-width:480px; }
+}
+
+/* ---------- Passenger counter ---------- */
+.pax-row{
+  display:flex; align-items:center; gap:8px; margin-bottom:10px;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:13px; padding:9px 10px;
+}
+.pax-info{ flex:0 0 auto; padding-right:4px; }
+.pax-label{ font-size:9.5px; letter-spacing:.03em; color:var(--muted); font-weight:600; }
+.pax-count{ font-family:"Big Shoulders Display", sans-serif; font-size:26px; font-weight:700; line-height:1; }
+.pax-btn{
+  flex:1; border:none; border-radius:10px; padding:11px 8px;
+  font-family:"IBM Plex Sans", sans-serif; font-weight:600; font-size:13.5px; cursor:pointer;
+}
+.pax-btn.on{ background:var(--route); color:#04231d; }
+.pax-btn.off{ background:var(--surface); color:var(--text); border:1px solid var(--line); }
+.pax-reset{
+  flex:0 0 auto; width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
+  background:var(--surface); color:var(--muted); font-size:15px; cursor:pointer;
+}
+.pax-btn:active, .pax-reset:active{ transform:scale(.95); }
+
+.sched-pax{
+  display:flex; align-items:center; gap:6px; margin-top:8px; padding-top:8px; border-top:1px dashed var(--line);
+}
+.sched-pax .n{ font-family:"Big Shoulders Display", sans-serif; font-size:16px; font-weight:700; min-width:16px; text-align:center; }
+.sched-pax-btn{
+  width:26px; height:26px; border-radius:8px; border:1px solid var(--line); background:var(--surface);
+  color:var(--text); font-size:14px; line-height:1; cursor:pointer; font-family:inherit;
+}
+.sched-pax-btn.on{ color:var(--route); }
+.sched-pax-btn.off{ color:var(--danger); }
+.sched-pax-label{ font-size:11px; color:var(--muted); margin-right:2px; }
+
+/* ---------- Map ---------- */
+.map-wrap{ position:relative; flex:1 1 auto; min-height:0; }
+#map{ position:absolute; inset:0; background:var(--surface-2); }
+.leaflet-container{
+  background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
+}
+#map:not(.tiles-ok) .leaflet-container{
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size:40px 40px;
+  background-position:center;
+}
+.notile-banner{
+  position:absolute; left:10px; right:10px; top:10px; z-index:450;
+  background:var(--surface); border:1px solid var(--line); color:var(--text);
+  font-size:12px; line-height:1.4; border-radius:11px; padding:9px 34px 9px 12px;
+  box-shadow:var(--shadow);
+}
+.notile-banner button{
+  position:absolute; right:6px; top:6px; width:24px; height:24px; border:none;
+  background:transparent; color:var(--muted); font-size:16px; cursor:pointer; border-radius:6px;
+}
+.maps-link{ color:var(--route); font-weight:600; text-decoration:none; }
+
+.stop-marker{
+  width:24px; height:24px; border-radius:50%;
+  background:var(--stop); color:var(--stop-ink);
+  border:2px solid var(--surface);
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.stop-marker.done{ opacity:.45; }
+.live-dot-wrap{ width:26px; height:26px; }
+.live-dot{
+  width:16px; height:16px; border-radius:50%;
+  background:var(--accent); border:3px solid var(--surface);
+  box-shadow:0 0 0 0 rgba(224,99,26,.55);
+  animation:pulse 2.2s infinite;
+  position:absolute; top:5px; left:5px;
+}
+@keyframes pulse{
+  0%{ box-shadow:0 0 0 0 rgba(224,99,26,.5); }
+  70%{ box-shadow:0 0 0 16px rgba(224,99,26,0); }
+  100%{ box-shadow:0 0 0 0 rgba(224,99,26,0); }
+}
+.heading-wedge{
+  position:absolute; top:-9px; left:50%; transform-origin:50% 22px;
+  width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent;
+  border-bottom:9px solid var(--accent); margin-left:-5px;
+}
+
+.map-fab{
+  position:absolute; right:12px; bottom:14px; z-index:400;
+  width:44px; height:44px; border-radius:12px;
+  background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow);
+  display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer;
+}
+.map-fab:active{ transform:scale(.94); }
+
+.empty-state{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:12px; padding:30px; text-align:center; z-index:300;
+  background:var(--bg);
+}
+.empty-state .glyph{ font-size:38px; }
+.empty-state h2{ margin:0; font-size:20px; font-weight:600; }
+.empty-state p{ margin:0; color:var(--muted); font-size:14px; max-width:280px; line-height:1.5; }
+
+/* ---------- Bottom stat panel ---------- */
+.panel{
+  flex:0 0 auto; background:var(--surface); border-top:1px solid var(--line);
+  border-radius:18px 18px 0 0; margin-top:-14px; position:relative; z-index:450;
+  box-shadow:var(--shadow);
+  padding:14px 14px calc(12px + env(safe-area-inset-bottom));
+}
+.stats-row{ display:flex; gap:10px; margin-bottom:12px; }
+.stat{
+  flex:1; background:var(--surface-2); border-radius:12px; padding:9px 12px;
+  border:1px solid var(--line);
+}
+.stat-label{ font-size:10.5px; color:var(--muted); letter-spacing:.02em; }
+.stat-value{ font-size:26px; font-weight:600; line-height:1.1; margin-top:1px; }
+.stat-value small{ font-size:13px; font-weight:500; color:var(--muted); font-family:"IBM Plex Sans",sans-serif; }
+.stat-sub{ font-size:11px; color:var(--muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.track-btn{
+  width:100%; border:none; border-radius:13px; padding:14px 16px;
+  font-family:"IBM Plex Sans", sans-serif; font-weight:600; font-size:15.5px;
+  background:var(--accent); color:var(--accent-ink); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.track-btn:active{ transform:scale(.985); }
+.track-btn.on{ background:var(--surface-2); color:var(--text); border:1px solid var(--line); }
+.track-btn.nav-btn{
+  background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+  margin-top:9px; font-size:14px; padding:12px 16px;
+}
+.gps-note{ text-align:center; font-size:11.5px; color:var(--muted); margin-top:8px; min-height:14px; }
+
+/* ---------- Drawer ---------- */
+.scrim{
+  position:fixed; inset:0; background:rgba(10,14,13,.5); z-index:600;
+  opacity:0; pointer-events:none; transition:opacity .18s ease;
+}
+.scrim.open{ opacity:1; pointer-events:auto; }
+.drawer{
+  position:fixed; left:0; right:0; bottom:0; z-index:700;
+  background:var(--surface); border-radius:18px 18px 0 0;
+  max-height:82vh; display:flex; flex-direction:column;
+  transform:translateY(100%); transition:transform .22s cubic-bezier(.2,.8,.3,1);
+  box-shadow:0 -12px 40px rgba(0,0,0,.35);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.drawer.open{ transform:translateY(0); }
+.drawer-handle{ width:36px; height:4px; background:var(--line); border-radius:3px; margin:10px auto 4px; }
+.drawer-head{ display:flex; align-items:center; justify-content:space-between; padding:6px 16px 10px; }
+.drawer-head h2{ margin:0; font-size:16px; font-weight:600; }
+.drawer-body{ overflow-y:auto; padding:0 12px 14px; }
+
+.upload-btn{
+  display:flex; align-items:center; gap:10px; width:100%;
+  border:1.5px dashed var(--line); border-radius:13px; background:var(--surface-2);
+  color:var(--text); padding:13px 14px; font-family:inherit; font-size:14px; font-weight:500;
+  cursor:pointer; margin-bottom:10px;
+}
+.upload-btn .g{ font-size:19px; }
+.upload-btn input{ display:none; }
+
+.route-card{
+  display:flex; align-items:center; gap:11px; padding:11px 10px;
+  border-radius:13px; border:1px solid var(--line); margin-bottom:8px; background:var(--surface);
+}
+.route-card.active{ border-color:var(--route); background:color-mix(in srgb, var(--route) 10%, var(--surface)); }
+.route-badge{
+  width:42px; height:42px; border-radius:10px; background:var(--route); color:#04231d;
+  display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600;
+  flex:0 0 auto; text-align:center; line-height:1.05;
+}
+.route-meta{ flex:1; min-width:0; }
+.route-meta .name{ font-size:14.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.route-meta .sub{ font-size:11.5px; color:var(--muted); }
+.route-actions{ display:flex; gap:6px; flex:0 0 auto; }
+.chip-btn{
+  border:1px solid var(--line); background:var(--surface-2); color:var(--text);
+  border-radius:9px; padding:7px 10px; font-size:12.5px; font-family:inherit; font-weight:500; cursor:pointer;
+}
+.chip-btn.use{ background:var(--route); color:#04231d; border-color:var(--route); }
+.chip-btn.del{ color:var(--danger); }
+
+.drawer-empty{ text-align:center; color:var(--muted); font-size:13px; padding:20px 10px; }
+.drawer-status{ font-size:12px; color:var(--muted); text-align:center; padding:2px 0 8px; min-height:16px; }
+
+/* ---------- Schedule view ---------- */
+.sched-body{ flex:1; overflow-y:auto; padding:14px 14px calc(20px + env(safe-area-inset-bottom)); }
+.sched-banner{
+  border-radius:12px; padding:11px 13px; margin-bottom:14px; font-size:13px; font-weight:500;
+  background:var(--surface-2); border:1px solid var(--line); color:var(--muted);
+}
+.sched-section{ margin-bottom:16px; }
+.sched-section h3{ margin:0 0 8px; font-size:12px; letter-spacing:.03em; color:var(--muted); font-weight:600; }
+.sched-row{
+  display:flex; align-items:center; gap:12px; padding:12px 13px; border-radius:12px;
+  border:1px solid var(--line); background:var(--surface); margin-bottom:8px;
+  transition:background .3s, border-color .3s, opacity .3s;
+}
+.sched-row.past{ opacity:.4; }
+.sched-row.now{
+  background:color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;
+}
+.sched-dot{
+  width:10px; height:10px; border-radius:50%; flex:0 0 auto; background:var(--line);
+}
+.sched-row.now .sched-dot{ background:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
+.sched-row.past .sched-dot{ background:var(--route); }
+.sched-info{ flex:1; min-width:0; }
+.sched-stop{ font-size:14.5px; font-weight:500; }
+.sched-row.now .sched-stop{ font-weight:700; }
+.sched-status{ font-size:11.5px; color:var(--muted); margin-top:1px; }
+.sched-row.now .sched-status{ color:var(--accent); font-weight:600; }
+.sched-time{ font-family:"Big Shoulders Display", sans-serif; font-size:22px; font-weight:600; flex:0 0 auto; }
+.sched-note{ font-size:12px; color:var(--muted); padding:2px 2px 0; }
+.sched-op{ font-size:13px; line-height:1.65; color:var(--text); }
+.sched-op .muted{ color:var(--muted); }
+.sched-route-text{ font-size:12.5px; line-height:1.65; color:var(--muted); }
+.sched-empty{ text-align:center; color:var(--muted); font-size:13px; padding:40px 20px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="icon-btn" id="menuBtn" aria-label="Routes">☰</button>
+  <div class="topbar-title">
+    <h1 id="routeName">Round Tracker</h1>
+    <div class="sub" id="routeSub">No route loaded</div>
+  </div>
+  <button class="icon-btn theme-toggle" id="themeBtn" aria-label="Toggle theme">◐</button>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tabMapBtn">Map</button>
+  <button class="tab-btn" id="tabSchedBtn">Schedule</button>
+</div>
+
+<div id="views">
+<div id="mapView" class="view">
+<div class="map-wrap">
+  <div id="map"></div>
+  <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
+  <div class="empty-state" id="emptyState">
+    <div class="glyph">🧭</div>
+    <h2>No routes yet</h2>
+    <p>Add a GPX file to plot your round and start GPS tracking.</p>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="stats-row">
+    <div class="stat">
+      <div class="stat-label">SPEED</div>
+      <div class="stat-value"><span id="statSpeed">–</span><small> mph</small></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">OFF ROUTE</div>
+      <div class="stat-value"><span id="statDist">–</span><small id="statDistUnit"></small></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">NEAREST STOP</div>
+      <div class="stat-value" style="font-size:18px;"><span id="statStop">–</span></div>
+      <div class="stat-sub" id="statStopDist"></div>
+    </div>
+  </div>
+
+  <div class="pax-row" id="paxRowMap">
+    <div class="pax-info">
+      <div class="pax-label">ONBOARD</div>
+      <div class="pax-count" id="paxCountMap">0</div>
+    </div>
+    <button class="pax-btn off" data-pax="off">− Alight</button>
+    <button class="pax-btn on" data-pax="on">+ Board</button>
+    <button class="pax-reset" data-pax="reset" aria-label="Reset count">↺</button>
+  </div>
+
+  <button class="track-btn" id="trackBtn">▶  Start GPS tracking</button>
+  <button class="track-btn nav-btn" id="navBtn">🧭  Navigate this route in Google Maps ↗</button>
+  <div class="gps-note" id="gpsNote"></div>
+</div>
+</div>
+
+<div id="scheduleView" class="view">
+  <div class="sched-body" id="schedBody"></div>
+</div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-handle"></div>
+  <div class="drawer-head"><h2>Your routes</h2><button class="icon-btn" id="drawerClose">✕</button></div>
+  <div class="drawer-body">
+    <label class="upload-btn">
+      <span class="g">＋</span>
+      <span id="uploadLabel">Add GPX file(s)</span>
+      <input type="file" id="fileInput" accept=".gpx,.xml,.txt" multiple>
+    </label>
+    <div class="drawer-status" id="drawerStatus"></div>
+    <div id="routeList"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- On-screen error diagnostics ---------------- */
+  /* If anything throws, show it instead of failing silently — makes a
+     broken load debuggable without needing dev tools. */
+  var errBanner = null;
+  function showError(msg){
+    if(!errBanner){
+      errBanner = document.createElement('div');
+      errBanner.style.cssText = 'position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:9999;background:#b3391f;color:#fff;padding:10px 14px;border-radius:10px;font:13px -apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35);';
+      document.body.appendChild(errBanner);
+    }
+    errBanner.textContent = msg;
+    errBanner.style.display = 'block';
+  }
+  window.addEventListener('error', function(e){ showError('App error: '+(e.message||'unknown')); });
+  window.addEventListener('unhandledrejection', function(e){
+    var m = (e.reason && (e.reason.message||e.reason.code)) || String(e.reason);
+    showError('App error: '+m);
+  });
+
+  /* ---------------- Built-in default routes ----------------
+     Always available on this device, even if the shared database is
+     unreachable (offline, not signed in, permissions, etc.), so the
+     app is never blank. If the db capability connects, live/shared
+     data from there takes over and keeps these in sync. */
+  var DEFAULT_ROUTES = {"seed-360-am": {"id": "seed-360-am", "name": "360 (AM)", "addedAt": "2026-09-18T08:00:00.000Z", "track": [[51.68208, -3.99727], [51.68193, -3.99729], [51.68192, -3.9974], [51.6819, -3.99751], [51.68181, -3.99784], [51.68178, -3.99801], [51.68178, -3.99809], [51.68178, -3.99825], [51.6818, -3.9986], [51.68176, -3.99861], [51.68174, -3.99863], [51.68173, -3.99865], [51.68172, -3.99867], [51.68171, -3.9987], [51.68171, -3.99875], [51.68172, -3.99879], [51.68154, -3.99899], [51.68151, -3.99902], [51.68139, -3.99916], [51.68139, -3.99916], [51.68121, -3.99937], [51.68115, -3.99946], [51.68086, -3.99991], [51.68056, -4.00045], [51.68031, -4.00107], [51.68015, -4.00164], [51.68, -4.00244], [51.67975, -4.00428], [51.67969, -4.00458], [51.67952, -4.0054], [51.6793, -4.00591], [51.67922, -4.0061], [51.67904, -4.00595], [51.67893, -4.00585], [51.67893, -4.00585], [51.67867, -4.00565], [51.67841, -4.00548], [51.67812, -4.00533], [51.67763, -4.00513], [51.67753, -4.00509], [51.67712, -4.00491], [51.67674, -4.00476], [51.67648, -4.00465], [51.67636, -4.00461], [51.67589, -4.00441], [51.67579, -4.00437], [51.67537, -4.0042], [51.67522, -4.00414], [51.67503, -4.00406], [51.67503, -4.00406], [51.67458, -4.00388], [51.67425, -4.00372], [51.67389, -4.00351], [51.67369, -4.00341], [51.67335, -4.00314], [51.67287, -4.00266], [51.67274, -4.00255], [51.67276, -4.00248], [51.67277, -4.0024], [51.67277, -4.00235], [51.67273, -4.00221], [51.6728, -4.00202], [51.67285, -4.00188], [51.67289, -4.00174], [51.67292, -4.00165], [51.67302, -4.00138], [51.67306, -4.00127], [51.67315, -4.00101], [51.67315, -4.00101], [51.6733, -4.00059], [51.67347, -4.00022], [51.67386, -3.99958], [51.67422, -3.99914], [51.6743, -3.99902], [51.67437, -3.99895], [51.67471, -3.99851], [51.67513, -3.99786], [51.67521, -3.99781], [51.67534, -3.99761], [51.67573, -3.99748], [51.67587, -3.99746], [51.67662, -3.99727], [51.67673, -3.99724], [51.67699, -3.99718], [51.67705, -3.99715], [51.67713, -3.99709], [51.67721, -3.99699], [51.67732, -3.99676], [51.67733, -3.99672], [51.67738, -3.99646], [51.67738, -3.99626], [51.67735, -3.99608], [51.67724, -3.99578], [51.67706, -3.99559], [51.67691, -3.99553], [51.67689, -3.99552], [51.67664, -3.99553], [51.67653, -3.99553], [51.67581, -3.99559], [51.67577, -3.99559], [51.67553, -3.99565], [51.67536, -3.9958], [51.67525, -3.99597], [51.67504, -3.99611], [51.6748, -3.99612], [51.67438, -3.9959], [51.67398, -3.99567], [51.67306, -3.99523], [51.67243, -3.99501], [51.67174, -3.9949], [51.6715, -3.99488], [51.67088, -3.99489], [51.67017, -3.99498], [51.66955, -3.99514], [51.66944, -3.99504], [51.66939, -3.99498], [51.66935, -3.9949], [51.66931, -3.99479], [51.66932, -3.9941], [51.66933, -3.994], [51.66933, -3.994], [51.66936, -3.9937], [51.66939, -3.99369], [51.6694, -3.99368], [51.66942, -3.99365], [51.66943, -3.99363], [51.66943, -3.99358], [51.66943, -3.99354], [51.66943, -3.99351], [51.66942, -3.9935], [51.66941, -3.99347], [51.6694, -3.99346], [51.66937, -3.99344], [51.66936, -3.99344], [51.66933, -3.99344], [51.66932, -3.99345], [51.6693, -3.99347], [51.66929, -3.99348], [51.66928, -3.99352], [51.66927, -3.99354], [51.66927, -3.99357], [51.66927, -3.99359], [51.66928, -3.99364], [51.66929, -3.99366], [51.66931, -3.99369], [51.66933, -3.99369], [51.66936, -3.9937], [51.66932, -3.9941], [51.66931, -3.99479], [51.66929, -3.99486], [51.66929, -3.99511], [51.66927, -3.99525], [51.66935, -3.99552], [51.66975, -3.99535], [51.67032, -3.99523], [51.67101, -3.99515], [51.67159, -3.99516], [51.67175, -3.99518], [51.67301, -3.99545], [51.67363, -3.99571], [51.67393, -3.99587], [51.67433, -3.9961], [51.67482, -3.99636], [51.67493, -3.99642], [51.67505, -3.99657], [51.67515, -3.99678], [51.67521, -3.99697], [51.67523, -3.99736], [51.6752, -3.99763], [51.67514, -3.99776], [51.67513, -3.99786], [51.67471, -3.99851], [51.67437, -3.99895], [51.6743, -3.99902], [51.67422, -3.99914], [51.67386, -3.99958], [51.67354, -4.0001], [51.67354, -4.0001], [51.67347, -4.00022], [51.6733, -4.00059], [51.67306, -4.00127], [51.67302, -4.00138], [51.67292, -4.00165], [51.67289, -4.00174], [51.67285, -4.00188], [51.6728, -4.00202], [51.67273, -4.00221], [51.67269, -4.00215], [51.67262, -4.00216], [51.67258, -4.0022], [51.67252, -4.00204], [51.67243, -4.00187], [51.67221, -4.00141], [51.67212, -4.00129], [51.67212, -4.00129], [51.67198, -4.00109], [51.67104, -4.00016], [51.67069, -3.99974], [51.67012, -3.99902], [51.67008, -3.99897], [51.66944, -3.99828], [51.66953, -3.99783], [51.66963, -3.99769], [51.66977, -3.99758], [51.66989, -3.99757], [51.6707, -3.99771], [51.67079, -3.99776], [51.67093, -3.99788], [51.67156, -3.99862], [51.6719, -3.99896], [51.67204, -3.99897], [51.6722, -3.99885], [51.67238, -3.99842], [51.67265, -3.9978], [51.67265, -3.9978], [51.67265, -3.99778], [51.67269, -3.9976], [51.67268, -3.99712], [51.67259, -3.99687], [51.67228, -3.99677], [51.67188, -3.99671], [51.67157, -3.99668], [51.67127, -3.99665], [51.67116, -3.99667], [51.67102, -3.9968], [51.67085, -3.99704], [51.67084, -3.99718], [51.67084, -3.99718], [51.67079, -3.99776], [51.6707, -3.99771], [51.66989, -3.99757], [51.66977, -3.99758], [51.66963, -3.99769], [51.66953, -3.99783], [51.66944, -3.99828], [51.67008, -3.99897], [51.67012, -3.99902], [51.67069, -3.99974], [51.67104, -4.00016], [51.67198, -4.00109], [51.67221, -4.00141], [51.67243, -4.00187], [51.67241, -4.00192], [51.67241, -4.00192], [51.67243, -4.00187], [51.67252, -4.00204], [51.67258, -4.0022], [51.67254, -4.00231], [51.67256, -4.0025], [51.67248, -4.00305], [51.67242, -4.00325], [51.67241, -4.00331], [51.67232, -4.00371], [51.67226, -4.00401], [51.67226, -4.00401], [51.67204, -4.00517], [51.67199, -4.00545], [51.67197, -4.00557], [51.67172, -4.0066], [51.67166, -4.00679], [51.67138, -4.00745], [51.67136, -4.00746], [51.67135, -4.00747], [51.67134, -4.00748], [51.67133, -4.00751], [51.67133, -4.00753], [51.67133, -4.00755], [51.67124, -4.00768], [51.67121, -4.00773], [51.67091, -4.00831], [51.67076, -4.00859], [51.67008, -4.00969], [51.66966, -4.01042], [51.66951, -4.01067], [51.66939, -4.01088], [51.6693, -4.01107], [51.66908, -4.01154], [51.66885, -4.01222], [51.66921, -4.01251], [51.66921, -4.01251], [51.66968, -4.01289], [51.66962, -4.01314], [51.66958, -4.01361], [51.66957, -4.01399], [51.6696, -4.01434], [51.66963, -4.01459], [51.66963, -4.01459], [51.66969, -4.01503], [51.66972, -4.01512], [51.6698, -4.01515], [51.67035, -4.01505], [51.67059, -4.01484], [51.67078, -4.01468], [51.67145, -4.01458], [51.67217, -4.01448], [51.67213, -4.01372], [51.67213, -4.01372], [51.67211, -4.01332], [51.67204, -4.01184], [51.67192, -4.00959], [51.67191, -4.00934], [51.67191, -4.00934], [51.6719, -4.00927], [51.67187, -4.00912], [51.67177, -4.00869], [51.6716, -4.00802], [51.67147, -4.0077], [51.67145, -4.00766], [51.67141, -4.00757], [51.67142, -4.00755], [51.67142, -4.00754], [51.67142, -4.00751], [51.67142, -4.0075], [51.67141, -4.00749], [51.6714, -4.00747], [51.67138, -4.00745], [51.67136, -4.00746], [51.67135, -4.00747], [51.67134, -4.00748], [51.67133, -4.00751], [51.67133, -4.00753], [51.67133, -4.00755], [51.67124, -4.00768], [51.67121, -4.00773], [51.67091, -4.00831], [51.67076, -4.00859], [51.67008, -4.00969], [51.66978, -4.01022], [51.66978, -4.01022], [51.66966, -4.01042], [51.66951, -4.01067], [51.66939, -4.01088], [51.6693, -4.01107], [51.66908, -4.01154], [51.66885, -4.01222], [51.66875, -4.01255], [51.66869, -4.01278], [51.66869, -4.01278], [51.66862, -4.01306], [51.66855, -4.0134], [51.66847, -4.01377], [51.66835, -4.01434], [51.66823, -4.01497], [51.66813, -4.01562], [51.66801, -4.01635], [51.6679, -4.0172], [51.66785, -4.01766], [51.66781, -4.01801], [51.66778, -4.01841], [51.66776, -4.01864], [51.66773, -4.01926], [51.66769, -4.021], [51.66768, -4.02132], [51.66767, -4.02203], [51.66766, -4.02224], [51.66766, -4.02275], [51.66762, -4.02287], [51.66764, -4.02328], [51.66765, -4.02337], [51.66764, -4.0234], [51.66764, -4.02344], [51.66761, -4.02358], [51.66759, -4.02387], [51.66757, -4.02407], [51.66755, -4.02423], [51.66753, -4.02425], [51.66752, -4.02426], [51.66751, -4.02431], [51.66752, -4.02433], [51.66752, -4.02435], [51.66739, -4.0243], [51.66734, -4.02427], [51.66727, -4.02423], [51.66717, -4.02416], [51.66708, -4.0241], [51.66642, -4.02364], [51.66513, -4.02276], [51.66471, -4.02236], [51.66456, -4.02221], [51.66436, -4.022], [51.66421, -4.02183], [51.6639, -4.02143], [51.6636, -4.021], [51.66338, -4.02067], [51.66294, -4.01973], [51.66288, -4.0196], [51.6627, -4.01922], [51.66246, -4.01872], [51.66179, -4.01727], [51.66152, -4.0167], [51.66134, -4.01619], [51.66128, -4.01546], [51.66119, -4.01536], [51.66109, -4.01526], [51.66089, -4.01503], [51.66079, -4.01493], [51.66032, -4.01416], [51.65999, -4.01366], [51.65988, -4.01353], [51.65971, -4.01331], [51.65947, -4.01309], [51.65913, -4.01292], [51.65867, -4.01269], [51.65855, -4.01263], [51.65771, -4.01234], [51.65764, -4.01232], [51.65759, -4.01231], [51.65731, -4.01227], [51.65677, -4.01231], [51.65656, -4.01233], [51.65608, -4.01249], [51.65548, -4.01282], [51.65503, -4.01307], [51.65521, -4.01378], [51.6557, -4.01571], [51.65601, -4.017], [51.65604, -4.01713], [51.65617, -4.01767], [51.6563, -4.01823], [51.65632, -4.01832], [51.65635, -4.01846], [51.65643, -4.0188], [51.65647, -4.01897], [51.6565, -4.01908], [51.65653, -4.01921], [51.65658, -4.01942], [51.65663, -4.01957], [51.65666, -4.0198], [51.65666, -4.0199], [51.65671, -4.02021], [51.65673, -4.02048], [51.65674, -4.021], [51.65674, -4.02103], [51.65675, -4.02156], [51.65674, -4.02165], [51.65674, -4.02173], [51.65674, -4.02177], [51.65665, -4.02241], [51.65666, -4.02253], [51.65656, -4.02299], [51.6565, -4.02363], [51.65648, -4.02557], [51.65644, -4.03149], [51.65642, -4.034], [51.65642, -4.03457], [51.65641, -4.0359], [51.65639, -4.03728], [51.6564, -4.03796], [51.65638, -4.03806], [51.65634, -4.03886], [51.6563, -4.03888], [51.65587, -4.03909], [51.65563, -4.03924], [51.6555, -4.03938], [51.65487, -4.03963], [51.65474, -4.03969], [51.65405, -4.0399], [51.65327, -4.04003], [51.65301, -4.04006], [51.65281, -4.04009], [51.6527, -4.0401], [51.65241, -4.04018], [51.65228, -4.04021], [51.65194, -4.04027], [51.65136, -4.04038], [51.65108, -4.04044], [51.65081, -4.0405], [51.65075, -4.04051], [51.65064, -4.04059], [51.65057, -4.04065], [51.6505, -4.04071], [51.65037, -4.04085], [51.65016, -4.04102], [51.65009, -4.04106], [51.64995, -4.04113], [51.64968, -4.04134], [51.64943, -4.04155], [51.64926, -4.04167], [51.64893, -4.04191], [51.64874, -4.0421], [51.64845, -4.04247], [51.6484, -4.04255], [51.64826, -4.04278], [51.64815, -4.04297], [51.64812, -4.04303], [51.64807, -4.0431], [51.64802, -4.04297], [51.64801, -4.04295], [51.64794, -4.04282], [51.64775, -4.04239], [51.64766, -4.04219], [51.64761, -4.04206], [51.64759, -4.04199], [51.64757, -4.04191], [51.64754, -4.0418], [51.64751, -4.04165], [51.64753, -4.04164], [51.64755, -4.04162], [51.64755, -4.0416], [51.64756, -4.04157], [51.64756, -4.04153], [51.64755, -4.04149], [51.64754, -4.04147], [51.6475, -4.04146], [51.64747, -4.04146], [51.64745, -4.04149], [51.64744, -4.04151], [51.64743, -4.04153], [51.64741, -4.04153], [51.64735, -4.04146], [51.64732, -4.04138], [51.64731, -4.04135], [51.64715, -4.0409], [51.64702, -4.04048], [51.64702, -4.03994], [51.64704, -4.03944], [51.64706, -4.03894], [51.64705, -4.03864], [51.647, -4.03829], [51.64697, -4.03812], [51.64691, -4.03791], [51.64689, -4.03785], [51.64689, -4.03785], [51.64688, -4.03782], [51.64655, -4.03709], [51.64632, -4.0367], [51.64622, -4.03655], [51.64593, -4.03619], [51.64552, -4.03579], [51.64505, -4.03538], [51.64497, -4.03532], [51.64477, -4.03603], [51.64452, -4.03692], [51.64438, -4.0374], [51.64457, -4.03741], [51.64463, -4.03731], [51.64467, -4.03708]], "stops": [[51.682085, -3.997317], [51.681353, -3.999122], [51.678956, -4.005757], [51.675039, -4.003979], [51.673191, -4.001048], [51.669274, -3.993991], [51.66935, -3.99552], [51.673479, -4.000005], [51.672163, -4.001219], [51.672693, -3.997855], [51.670804, -3.997178], [51.672403, -4.00191], [51.672224, -4.003989], [51.6692, -4.012542], [51.669596, -4.014599], [51.672156, -4.013715], [51.671944, -4.009338], [51.669736, -4.010157], [51.668604, -4.012718], [51.646892, -4.037856], [51.644683, -4.037086]], "timetable": {"morning": [{"stop": "Tircoed Village (Community Centre)", "time": "07:40"}, {"stop": "Pontarddulais Road, Penllergaer", "time": "07:43"}, {"stop": "Parc Penllergaer (roundabout)", "time": "07:50"}, {"stop": "Druidstone Way", "time": "08:00"}, {"stop": "Heol-Y-Gelli", "time": "08:05"}, {"stop": "Llewellyn Road", "time": "08:08"}, {"stop": "Gorseinon Road", "time": "08:10"}, {"stop": "YG Gwyr (arrival)", "time": "08:35"}]}, "operator": {"name": "South Wales Transport (Neath) Ltd.", "address": "Unit 2, Ferryboat Close, Swansea Enterprise Park, Swansea, SA6 8QN", "tel": "01792 799575"}, "capacity": "53 seats", "specifiedRoute": "Y Cyswllt (Community Centre), Heol Tircoed, Swansea Road, Pontardulais Road, A48, A483, Home Farm Way (roundabout), A483, A48, Swansea Road, Druidstone Way, Swansea Road, Gorseinon Road, Dillwyn Road, \u2026 Crescent, Heol-y-Gelli, Llewellyn Road, Gorseinon Road, Hospital \u2026, Swansea Road, A484, Victoria Road, Mill Street, Sterry Road, Cecil \u2026, Park Road (School). (A few words were cropped in the photo.)"}, "seed-360-pm": {"id": "seed-360-pm", "name": "360 (PM)", "addedAt": "2026-09-18T08:00:00.000Z", "track": [[51.64469, -4.037], [51.64484, -4.03619], [51.64482, -4.03609], [51.64477, -4.03603], [51.64497, -4.03532], [51.64505, -4.03538], [51.64552, -4.03579], [51.64593, -4.03619], [51.64622, -4.03655], [51.64632, -4.0367], [51.64655, -4.03709], [51.64688, -4.03782], [51.6469, -4.03789], [51.6469, -4.03789], [51.64691, -4.03791], [51.64697, -4.03812], [51.647, -4.03829], [51.64705, -4.03864], [51.64706, -4.03894], [51.64704, -4.03944], [51.64702, -4.03994], [51.64702, -4.04048], [51.64715, -4.0409], [51.64731, -4.04135], [51.64732, -4.04138], [51.64735, -4.04146], [51.64741, -4.04153], [51.64743, -4.04153], [51.64743, -4.04156], [51.64743, -4.04158], [51.64746, -4.04163], [51.64748, -4.04165], [51.6475, -4.04165], [51.64751, -4.04165], [51.64754, -4.0418], [51.64757, -4.04191], [51.64759, -4.04199], [51.64761, -4.04206], [51.64766, -4.04219], [51.64775, -4.04239], [51.64794, -4.04282], [51.64801, -4.04295], [51.64802, -4.04297], [51.64807, -4.0431], [51.64812, -4.04303], [51.64815, -4.04297], [51.64826, -4.04278], [51.6484, -4.04255], [51.64845, -4.04247], [51.64874, -4.0421], [51.64893, -4.04191], [51.64926, -4.04167], [51.64943, -4.04155], [51.64968, -4.04134], [51.64995, -4.04113], [51.65009, -4.04106], [51.65016, -4.04102], [51.65037, -4.04085], [51.6505, -4.04071], [51.65057, -4.04065], [51.65064, -4.04059], [51.65075, -4.04051], [51.65081, -4.0405], [51.65108, -4.04044], [51.65136, -4.04038], [51.65194, -4.04027], [51.65228, -4.04021], [51.65241, -4.04018], [51.6527, -4.0401], [51.65281, -4.04009], [51.65301, -4.04006], [51.65327, -4.04003], [51.65405, -4.0399], [51.65474, -4.03969], [51.65487, -4.03963], [51.6555, -4.03938], [51.65568, -4.03936], [51.65575, -4.03934], [51.65612, -4.03923], [51.65627, -4.03923], [51.65628, -4.03926], [51.65631, -4.03928], [51.65633, -4.0393], [51.65635, -4.03931], [51.65637, -4.03931], [51.6564, -4.03931], [51.65646, -4.03929], [51.65649, -4.03925], [51.65652, -4.03918], [51.65653, -4.0391], [51.65653, -4.03906], [51.65652, -4.03901], [51.65651, -4.03895], [51.6565, -4.03893], [51.65646, -4.03888], [51.65642, -4.03831], [51.65642, -4.03807], [51.6564, -4.03796], [51.65639, -4.03728], [51.65641, -4.0359], [51.65642, -4.03457], [51.65642, -4.034], [51.65644, -4.03149], [51.65648, -4.02557], [51.6565, -4.02363], [51.65656, -4.02299], [51.65666, -4.02253], [51.65671, -4.02246], [51.65681, -4.02221], [51.65692, -4.02199], [51.65695, -4.02197], [51.65698, -4.02195], [51.65702, -4.02191], [51.65704, -4.02186], [51.65706, -4.02181], [51.65707, -4.02177], [51.65707, -4.02167], [51.65707, -4.02161], [51.65707, -4.0216], [51.65707, -4.02158], [51.65706, -4.02155], [51.65704, -4.02152], [51.65701, -4.02148], [51.65699, -4.02146], [51.65695, -4.02144], [51.6569, -4.02142], [51.65674, -4.02103], [51.65674, -4.021], [51.65673, -4.02048], [51.65671, -4.02021], [51.65666, -4.0199], [51.65666, -4.0198], [51.65663, -4.01957], [51.65658, -4.01942], [51.65653, -4.01921], [51.6565, -4.01908], [51.65647, -4.01897], [51.65643, -4.0188], [51.65635, -4.01846], [51.65632, -4.01832], [51.6563, -4.01823], [51.65617, -4.01767], [51.65604, -4.01713], [51.65601, -4.017], [51.6557, -4.01571], [51.65521, -4.01378], [51.65503, -4.01307], [51.65548, -4.01282], [51.65608, -4.01249], [51.65656, -4.01233], [51.65677, -4.01231], [51.65731, -4.01227], [51.65759, -4.01231], [51.65764, -4.01232], [51.65771, -4.01234], [51.65855, -4.01263], [51.65867, -4.01269], [51.65913, -4.01292], [51.65947, -4.01309], [51.65971, -4.01331], [51.65988, -4.01353], [51.65999, -4.01366], [51.66032, -4.01416], [51.66079, -4.01493], [51.66089, -4.01503], [51.66109, -4.01526], [51.66119, -4.01536], [51.66128, -4.01546], [51.66134, -4.01619], [51.66152, -4.0167], [51.66179, -4.01727], [51.66246, -4.01872], [51.6627, -4.01922], [51.66288, -4.0196], [51.66294, -4.01973], [51.66338, -4.02067], [51.6636, -4.021], [51.6639, -4.02143], [51.66421, -4.02183], [51.66436, -4.022], [51.66456, -4.02221], [51.66471, -4.02236], [51.66513, -4.02276], [51.66642, -4.02364], [51.66708, -4.0241], [51.66717, -4.02416], [51.66727, -4.02423], [51.66734, -4.02427], [51.66739, -4.0243], [51.66752, -4.02435], [51.66753, -4.02439], [51.66755, -4.02441], [51.66756, -4.02442], [51.66758, -4.02443], [51.66759, -4.02443], [51.66761, -4.02443], [51.66763, -4.02443], [51.66765, -4.02442], [51.66766, -4.02439], [51.66767, -4.02436], [51.66766, -4.02432], [51.66766, -4.0243], [51.66765, -4.02426], [51.66766, -4.02408], [51.66767, -4.02391], [51.66767, -4.02349], [51.66769, -4.02348], [51.66771, -4.02346], [51.66772, -4.02343], [51.66771, -4.0234], [51.6677, -4.02337], [51.66768, -4.02336], [51.66768, -4.02287], [51.66766, -4.02275], [51.66766, -4.02224], [51.66767, -4.02203], [51.66768, -4.02132], [51.66769, -4.021], [51.66773, -4.01926], [51.66776, -4.01864], [51.66778, -4.01841], [51.66781, -4.01801], [51.66785, -4.01766], [51.6679, -4.0172], [51.66801, -4.01635], [51.66813, -4.01562], [51.66821, -4.01514], [51.66821, -4.01514], [51.66823, -4.01497], [51.66835, -4.01434], [51.66847, -4.01377], [51.66855, -4.0134], [51.66862, -4.01306], [51.66875, -4.01255], [51.66885, -4.01222], [51.66921, -4.01251], [51.66921, -4.01251], [51.66968, -4.01289], [51.66962, -4.01314], [51.66958, -4.01361], [51.66957, -4.01399], [51.6696, -4.01434], [51.66963, -4.01459], [51.66963, -4.01459], [51.66969, -4.01503], [51.66972, -4.01512], [51.6698, -4.01515], [51.67035, -4.01505], [51.67059, -4.01484], [51.67078, -4.01468], [51.67145, -4.01458], [51.67217, -4.01448], [51.67213, -4.01372], [51.67213, -4.01372], [51.67211, -4.01332], [51.67204, -4.01184], [51.67192, -4.00959], [51.67191, -4.00934], [51.67191, -4.00934], [51.6719, -4.00927], [51.67187, -4.00912], [51.67177, -4.00869], [51.6716, -4.00802], [51.67147, -4.0077], [51.67145, -4.00766], [51.67141, -4.00757], [51.67142, -4.00755], [51.67142, -4.00754], [51.67142, -4.00751], [51.67142, -4.0075], [51.67141, -4.00749], [51.6714, -4.00747], [51.67138, -4.00745], [51.67166, -4.00679], [51.67168, -4.00672], [51.67168, -4.00672], [51.67172, -4.0066], [51.67197, -4.00557], [51.67199, -4.00545], [51.67204, -4.00517], [51.67232, -4.00371], [51.67241, -4.00331], [51.67242, -4.00325], [51.67248, -4.00305], [51.67266, -4.00264], [51.67272, -4.0026], [51.67274, -4.00255], [51.67276, -4.00248], [51.67277, -4.0024], [51.67277, -4.00235], [51.67273, -4.00221], [51.67269, -4.00215], [51.67262, -4.00216], [51.67258, -4.0022], [51.67252, -4.00204], [51.67243, -4.00187], [51.67221, -4.00141], [51.67212, -4.00129], [51.67212, -4.00129], [51.67198, -4.00109], [51.67104, -4.00016], [51.67069, -3.99974], [51.67012, -3.99902], [51.67008, -3.99897], [51.66944, -3.99828], [51.66953, -3.99783], [51.66963, -3.99769], [51.66977, -3.99758], [51.66989, -3.99757], [51.6707, -3.99771], [51.67079, -3.99776], [51.67093, -3.99788], [51.67156, -3.99862], [51.6719, -3.99896], [51.67204, -3.99897], [51.6722, -3.99885], [51.67238, -3.99842], [51.67265, -3.99778], [51.67265, -3.99778], [51.67269, -3.9976], [51.67268, -3.99712], [51.67259, -3.99687], [51.67228, -3.99677], [51.67188, -3.99671], [51.67157, -3.99668], [51.67127, -3.99665], [51.67116, -3.99667], [51.67102, -3.9968], [51.67085, -3.99704], [51.67084, -3.99714], [51.67084, -3.99714], [51.67079, -3.99776], [51.6707, -3.99771], [51.66989, -3.99757], [51.66977, -3.99758], [51.66963, -3.99769], [51.66953, -3.99783], [51.66944, -3.99828], [51.67008, -3.99897], [51.67012, -3.99902], [51.67069, -3.99974], [51.67104, -4.00016], [51.67198, -4.00109], [51.67221, -4.00141], [51.67243, -4.00187], [51.67241, -4.00192], [51.67241, -4.00192], [51.67243, -4.00187], [51.67252, -4.00204], [51.67258, -4.0022], [51.67254, -4.00231], [51.67256, -4.0025], [51.67257, -4.00258], [51.67261, -4.00263], [51.67266, -4.00264], [51.67272, -4.0026], [51.67274, -4.00255], [51.67287, -4.00266], [51.67328, -4.00307], [51.67328, -4.00307], [51.67335, -4.00314], [51.67369, -4.00341], [51.67389, -4.00351], [51.67425, -4.00372], [51.67458, -4.00388], [51.67522, -4.00414], [51.67537, -4.0042], [51.67579, -4.00437], [51.67589, -4.00441], [51.67636, -4.00461], [51.67648, -4.00465], [51.67674, -4.00476], [51.67712, -4.00491], [51.67753, -4.00509], [51.67763, -4.00513], [51.67794, -4.00525], [51.67794, -4.00525], [51.67812, -4.00533], [51.67841, -4.00548], [51.67867, -4.00565], [51.67904, -4.00595], [51.67922, -4.0061], [51.6793, -4.00591], [51.67952, -4.0054], [51.67969, -4.00458], [51.67975, -4.00428], [51.68, -4.00244], [51.68015, -4.00164], [51.68031, -4.00107], [51.68056, -4.00045], [51.68086, -3.99991], [51.68115, -3.99946], [51.68121, -3.99937], [51.68121, -3.99936], [51.68121, -3.99936], [51.68139, -3.99916], [51.68151, -3.99902], [51.68154, -3.99899], [51.68172, -3.99879], [51.68173, -3.99881], [51.68175, -3.99884], [51.68177, -3.99885], [51.6818, -3.99884], [51.68183, -3.99881], [51.68185, -3.99878], [51.68185, -3.9987], [51.68184, -3.99865], [51.6818, -3.9986], [51.68178, -3.99825], [51.68178, -3.99809], [51.68178, -3.99801], [51.68181, -3.99784], [51.6819, -3.99751], [51.68192, -3.9974], [51.68193, -3.99729], [51.68208, -3.99727], [51.68208, -3.99727], [51.68217, -3.99726], [51.68219, -3.99725], [51.6822, -3.99723], [51.68221, -3.9972], [51.68222, -3.99715], [51.6822, -3.99697], [51.68218, -3.99694], [51.68217, -3.99693], [51.68215, -3.99692], [51.68192, -3.99695], [51.68193, -3.99729], [51.68192, -3.9974], [51.6819, -3.99751], [51.68181, -3.99784], [51.68178, -3.99801], [51.68178, -3.99809], [51.68178, -3.99825], [51.6818, -3.9986], [51.68176, -3.99861], [51.68174, -3.99863], [51.68173, -3.99865], [51.68172, -3.99867], [51.68171, -3.9987], [51.68171, -3.99875], [51.68172, -3.99879], [51.68154, -3.99899], [51.68151, -3.99902], [51.68139, -3.99916], [51.68139, -3.99916], [51.68121, -3.99937], [51.68115, -3.99946], [51.68086, -3.99991], [51.68056, -4.00045], [51.68031, -4.00107], [51.68015, -4.00164], [51.68, -4.00244], [51.67975, -4.00428], [51.67969, -4.00458], [51.67952, -4.0054], [51.6793, -4.00591], [51.67922, -4.0061], [51.67904, -4.00595], [51.67893, -4.00585], [51.67893, -4.00585], [51.67867, -4.00565], [51.67841, -4.00548], [51.67812, -4.00533], [51.67763, -4.00513], [51.67753, -4.00509], [51.67712, -4.00491], [51.67674, -4.00476], [51.67648, -4.00465], [51.67636, -4.00461], [51.67589, -4.00441], [51.67579, -4.00437], [51.67537, -4.0042], [51.67522, -4.00414], [51.67503, -4.00406], [51.67503, -4.00406], [51.67458, -4.00388], [51.67425, -4.00372], [51.67389, -4.00351], [51.67369, -4.00341], [51.67335, -4.00314], [51.67287, -4.00266], [51.67274, -4.00255], [51.67276, -4.00248], [51.67277, -4.0024], [51.67277, -4.00235], [51.67273, -4.00221], [51.6728, -4.00202], [51.67285, -4.00188], [51.67289, -4.00174], [51.67292, -4.00165], [51.67302, -4.00138], [51.67306, -4.00127], [51.67315, -4.00101], [51.67315, -4.00101], [51.6733, -4.00059], [51.67347, -4.00022], [51.67386, -3.99958], [51.67422, -3.99914], [51.6743, -3.99902], [51.67437, -3.99895], [51.67471, -3.99851], [51.67513, -3.99786], [51.67521, -3.99781], [51.67534, -3.99761], [51.67573, -3.99748], [51.67587, -3.99746], [51.67662, -3.99727], [51.67673, -3.99724], [51.67699, -3.99718], [51.67705, -3.99715], [51.67713, -3.99709], [51.67721, -3.99699], [51.67732, -3.99676], [51.67733, -3.99672], [51.67738, -3.99646], [51.67738, -3.99626], [51.67735, -3.99608], [51.67724, -3.99578], [51.67706, -3.99559], [51.67691, -3.99553], [51.67689, -3.99552], [51.67664, -3.99553], [51.67653, -3.99553], [51.67581, -3.99559], [51.67577, -3.99559], [51.67553, -3.99565], [51.67536, -3.9958], [51.67525, -3.99597], [51.67504, -3.99611], [51.6748, -3.99612], [51.67438, -3.9959], [51.67398, -3.99567], [51.67306, -3.99523], [51.67243, -3.99501], [51.67174, -3.9949], [51.6715, -3.99488], [51.67088, -3.99489], [51.67017, -3.99498], [51.66955, -3.99514], [51.66944, -3.99504], [51.66939, -3.99498], [51.66935, -3.9949], [51.66931, -3.99479], [51.66932, -3.9941], [51.66933, -3.994]], "stops": [[51.644705, -4.037006], [51.646904, -4.037885], [51.668246, -4.015154], [51.6692, -4.012542], [51.669596, -4.014599], [51.672156, -4.013715], [51.671944, -4.009338], [51.671727, -4.006754], [51.672163, -4.001219], [51.672711, -3.997838], [51.67081, -3.997134], [51.672403, -4.00191], [51.673264, -4.003119], [51.677929, -4.005336], [51.681249, -3.99945], [51.682085, -3.997317], [51.681353, -3.999122], [51.678956, -4.005757], [51.675039, -4.003979], [51.673191, -4.001048], [51.669274, -3.993991]], "timetable": {"afternoon": [{"stop": "YG Gwyr (departure)", "time": "15:20"}], "afternoonNote": "Via reverse of the forward (morning) route."}, "operator": {"name": "South Wales Transport (Neath) Ltd.", "address": "Unit 2, Ferryboat Close, Swansea Enterprise Park, Swansea, SA6 8QN", "tel": "01792 799575"}, "capacity": "53 seats"}};
+
+
+  /* ---------------- Theme ---------------- */
+  var themeBtn = document.getElementById('themeBtn');
+  function applyTheme(t){
+    if(t) document.documentElement.setAttribute('data-theme', t);
+    else document.documentElement.removeAttribute('data-theme');
+  }
+  var savedTheme = null;
+  try{ savedTheme = localStorage.getItem('rt_theme'); }catch(e){}
+  applyTheme(savedTheme);
+  themeBtn.addEventListener('click', function(){
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'dark' ? 'light' : (cur === 'light' ? null : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'));
+    applyTheme(next);
+    try{ localStorage.setItem('rt_theme', next || ''); }catch(e){}
+  });
+
+  /* ---------------- Map setup ---------------- */
+  // Real street tiles load fine when this page is hosted normally (e.g.
+  // GitHub Pages). Inside Claude's published-artifact sandbox, external
+  // image loads are blocked, so we detect that and fall back gracefully
+  // to a plain grid + "Open in Maps" links — no separate build needed.
+  var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([51.5, -0.12], 6);
+  L.control.zoom({ position:'bottomleft' }).addTo(map);
+  L.control.scale({ position:'bottomright', imperial:true, metric:false }).addTo(map);
+
+  var tilesConfirmed = false;
+  var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+    crossOrigin: true
+  }).addTo(map);
+
+  function markTilesWorking(){
+    if(tilesConfirmed) return;
+    tilesConfirmed = true;
+    document.getElementById('map').classList.add('tiles-ok');
+    var b = document.querySelector('.notile-banner');
+    if(b) b.remove();
+  }
+  tileLayer.on('tileload', markTilesWorking);
+  tileLayer.on('load', markTilesWorking);
+
+  function showNoTilesBanner(){
+    if(tilesConfirmed) return;
+    try{ if(localStorage.getItem('rt_notile_seen')) return; }catch(e){}
+    var banner = document.createElement('div');
+    banner.className = 'notile-banner';
+    banner.innerHTML = 'No street map imagery here (platform restriction) — route &amp; GPS position are accurate. Tap a marker for a link to open it in Maps.<button aria-label="Dismiss">&times;</button>';
+    document.querySelector('.map-wrap').appendChild(banner);
+    banner.querySelector('button').addEventListener('click', function(){
+      banner.remove();
+      try{ localStorage.setItem('rt_notile_seen','1'); }catch(e){}
+    });
+  }
+  // Give tiles a few seconds to prove themselves before assuming they're blocked.
+  setTimeout(function(){ if(!tilesConfirmed) showNoTilesBanner(); }, 3500);
+  setTimeout(function(){ map.invalidateSize(); }, 150);
+
+  function mapsLink(lat, lng){
+    return 'https://www.google.com/maps/search/?api=1&query='+lat+','+lng;
+  }
+
+  var trackLine = null;
+  var stopsGroup = L.layerGroup().addTo(map);
+  var liveMarker = null;
+  var watchId = null;
+  var tracking = false;
+  var lastFix = null;
+  var followMe = true;
+
+  function stopIcon(n){
+    return L.divIcon({ className:'', html:'<div class="stop-marker"><span>'+n+'</span></div>', iconSize:[24,24], iconAnchor:[12,12] });
+  }
+  function liveIcon(heading){
+    var wedge = (heading===null||heading===undefined||isNaN(heading)) ? '' :
+      '<div class="heading-wedge" style="transform:rotate('+heading+'deg)"></div>';
+    return L.divIcon({ className:'', html:'<div class="live-dot-wrap">'+wedge+'<div class="live-dot"></div></div>', iconSize:[26,26], iconAnchor:[13,13] });
+  }
+
+  /* ---------------- Geometry helpers ---------------- */
+  function toRad(d){ return d*Math.PI/180; }
+  function haversineMeters(a,b){
+    var R=6371000, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
+    var s = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));
+  }
+  // local flat-earth projection around a reference lat, for cheap point-to-segment math
+  function project(pt, ref){
+    var mPerDegLat = 111320;
+    var mPerDegLon = 111320*Math.cos(toRad(ref[0]));
+    return [ (pt[0]-ref[0])*mPerDegLat, (pt[1]-ref[1])*mPerDegLon ];
+  }
+  function distToSegment(p, a, b){
+    var dx=b[0]-a[0], dy=b[1]-a[1];
+    var len2 = dx*dx+dy*dy;
+    if(len2===0) return Math.hypot(p[0]-a[0], p[1]-a[1]);
+    var t = ((p[0]-a[0])*dx + (p[1]-a[1])*dy)/len2;
+    t = Math.max(0, Math.min(1, t));
+    var cx = a[0]+t*dx, cy = a[1]+t*dy;
+    return Math.hypot(p[0]-cx, p[1]-cy);
+  }
+  function distanceToTrack(latlng, track){
+    if(!track || track.length===0) return null;
+    var ref = latlng;
+    var p = [0,0];
+    var best = Infinity;
+    if(track.length===1){
+      return haversineMeters(latlng, track[0]);
+    }
+    for(var i=0;i<track.length-1;i++){
+      var a = project(track[i], ref);
+      var b = project(track[i+1], ref);
+      var d = distToSegment(p, a, b);
+      if(d<best) best=d;
+    }
+    return best;
+  }
+  function nearestStop(latlng, stops){
+    if(!stops || stops.length===0) return null;
+    var bestI=-1, bestD=Infinity;
+    for(var i=0;i<stops.length;i++){
+      var d = haversineMeters(latlng, stops[i]);
+      if(d<bestD){ bestD=d; bestI=i; }
+    }
+    return { index:bestI, dist:bestD };
+  }
+  function fmtDist(m){
+    if(m==null) return {v:'–', u:''};
+    if(m < 1000) return { v: Math.round(m), u:' m' };
+    return { v: (m/1000).toFixed(1), u:' km' };
+  }
+
+  /* ---------------- GPX parsing ---------------- */
+  function parseGPX(text, fallbackName){
+    var xml = new DOMParser().parseFromString(text, 'application/xml');
+    if(xml.querySelector('parsererror')) throw new Error('That file is not valid GPX/XML.');
+    var name = fallbackName;
+    var rteName = xml.querySelector('rte > name, trk > name');
+    if(rteName && rteName.textContent.trim()) name = rteName.textContent.trim();
+
+    var track = Array.prototype.map.call(xml.querySelectorAll('trkpt'), function(el){
+      return [parseFloat(el.getAttribute('lat')), parseFloat(el.getAttribute('lon'))];
+    }).filter(function(p){ return !isNaN(p[0]) && !isNaN(p[1]); });
+
+    var stopEls = xml.querySelectorAll('rte > rtept');
+    if(stopEls.length===0) stopEls = xml.querySelectorAll('wpt');
+    var stops = Array.prototype.map.call(stopEls, function(el){
+      return [parseFloat(el.getAttribute('lat')), parseFloat(el.getAttribute('lon'))];
+    }).filter(function(p){ return !isNaN(p[0]) && !isNaN(p[1]); });
+
+    if(track.length===0 && stops.length===0) throw new Error('No track points or stops found in that GPX file.');
+    if(track.length===0) track = stops.slice();
+
+    return { name:name, track:track, stops:stops };
+  }
+
+  /* ---------------- Data store (db capability, falls back to memory) ---------------- */
+  var db = null;
+  var routes = {};      // id -> {id,name,addedAt,track,stops}
+  var activeId = null;
+  var unsubscribeRoutes = null;
+
+  /* ---------------- Passenger counter (per route, this device) ---------------- */
+  var pax = { byStop:{}, adhoc:0 }; // byStop: stopIndex -> net count at that stop
+  function paxKey(routeId){ return 'rt_pax_'+routeId; }
+  function loadPax(routeId){
+    var out = { byStop:{}, adhoc:0 };
+    try{
+      var raw = localStorage.getItem(paxKey(routeId));
+      if(raw){ var parsed = JSON.parse(raw); if(parsed && typeof parsed==='object'){ out.byStop = parsed.byStop||{}; out.adhoc = parsed.adhoc||0; } }
+    }catch(e){}
+    return out;
+  }
+  function savePax(routeId){
+    try{ localStorage.setItem(paxKey(routeId), JSON.stringify(pax)); }catch(e){}
+  }
+  function paxTotal(){
+    var t = pax.adhoc;
+    Object.keys(pax.byStop).forEach(function(k){ t += pax.byStop[k]; });
+    return Math.max(0, t);
+  }
+  function renderPax(){
+    var total = paxTotal();
+    var elMap = document.getElementById('paxCountMap');
+    if(elMap) elMap.textContent = total;
+    document.querySelectorAll('.sched-pax .n').forEach(function(el){
+      el.textContent = pax.byStop[el.getAttribute('data-stop-idx')] || 0;
+    });
+  }
+  function paxAdjust(delta){
+    pax.adhoc += delta;
+    if(activeId) savePax(activeId);
+    renderPax();
+  }
+  function paxAdjustStop(stopIdx, delta){
+    var cur = pax.byStop[stopIdx] || 0;
+    pax.byStop[stopIdx] = cur + delta;
+    if(activeId) savePax(activeId);
+    renderPax();
+  }
+  function paxReset(){
+    if(!confirm('Reset the onboard passenger count for this route?')) return;
+    pax = { byStop:{}, adhoc:0 };
+    if(activeId) savePax(activeId);
+    renderPax();
+  }
+  document.querySelectorAll('[data-pax]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var action = btn.dataset.pax;
+      if(action==='on') paxAdjust(1);
+      else if(action==='off') paxAdjust(-1);
+      else if(action==='reset') paxReset();
+    });
+  });
+
+  function renderEmptyState(){
+    document.getElementById('emptyState').style.display = Object.keys(routes).length ? 'none' : 'flex';
+  }
+
+  function renderRouteList(){
+    var list = document.getElementById('routeList');
+    var ids = Object.keys(routes).sort(function(a,b){
+      return (routes[b].addedAt||'').localeCompare(routes[a].addedAt||'');
+    });
+    if(ids.length===0){
+      list.innerHTML = '<div class="drawer-empty">No routes added yet. Add a GPX file above to get started.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    ids.forEach(function(id){
+      var r = routes[id];
+      var card = document.createElement('div');
+      card.className = 'route-card' + (id===activeId ? ' active' : '');
+      var initials = (r.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,3).toUpperCase() || '?';
+      var dateStr = '';
+      try{ dateStr = r.addedAt ? new Date(r.addedAt).toLocaleDateString(undefined,{day:'numeric',month:'short'}) : ''; }catch(e){}
+      card.innerHTML =
+        '<div class="route-badge">'+initials+'</div>'+
+        '<div class="route-meta"><div class="name"></div><div class="sub"></div></div>'+
+        '<div class="route-actions">'+
+          '<button class="chip-btn use">'+(id===activeId?'Viewing':'View')+'</button>'+
+          '<button class="chip-btn del">Delete</button>'+
+        '</div>';
+      card.querySelector('.name').textContent = r.name || 'Untitled route';
+      card.querySelector('.sub').textContent = (r.stops?r.stops.length:0)+' stops · '+(r.track?r.track.length:0)+' pts'+(dateStr?' · '+dateStr:'');
+      card.querySelector('.use').addEventListener('click', function(){ setActiveRoute(id); closeDrawer(); });
+      card.querySelector('.del').addEventListener('click', function(){ deleteRoute(id); });
+      list.appendChild(card);
+    });
+  }
+
+  function setActiveRoute(id){
+    var r = routes[id];
+    if(!r) return;
+    activeId = id;
+    try{ localStorage.setItem('rt_active', id); }catch(e){}
+    document.getElementById('routeName').textContent = r.name || 'Round Tracker';
+    document.getElementById('routeSub').textContent = (r.stops?r.stops.length:0)+' stops · '+(r.track?r.track.length:0)+' track points';
+
+    if(trackLine) map.removeLayer(trackLine);
+    stopsGroup.clearLayers();
+
+    if(r.track && r.track.length>1){
+      trackLine = L.polyline(r.track, { color: getCss('--route'), weight:4, opacity:.9, lineJoin:'round' }).addTo(map);
+    } else {
+      trackLine = null;
+    }
+    (r.stops||[]).forEach(function(pt, i){
+      L.marker(pt, { icon: stopIcon(i+1) }).addTo(stopsGroup)
+        .bindPopup('Stop '+(i+1)+'<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(pt[0],pt[1])+'">Open in Maps ↗</a>');
+    });
+
+    var bounds = null;
+    if(r.track && r.track.length) bounds = L.latLngBounds(r.track);
+    else if(r.stops && r.stops.length) bounds = L.latLngBounds(r.stops);
+    if(bounds) map.fitBounds(bounds, { padding:[36,36] });
+
+    renderRouteList();
+    renderEmptyState();
+    pax = loadPax(id);
+    renderPax();
+    renderSchedule();
+  }
+
+  function getCss(varName){
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  }
+
+  function upsertRouteLocal(id, data){
+    routes[id] = Object.assign({id:id}, data);
+    if(!activeId) setActiveRoute(id);
+    else { renderRouteList(); renderEmptyState(); if(id===activeId) setActiveRoute(id); }
+  }
+  function removeRouteLocal(id){
+    delete routes[id];
+    if(activeId===id){
+      activeId = null;
+      var remaining = Object.keys(routes);
+      if(remaining.length) setActiveRoute(remaining[0]);
+      else {
+        if(trackLine){ map.removeLayer(trackLine); trackLine=null; }
+        stopsGroup.clearLayers();
+        document.getElementById('routeName').textContent = 'Round Tracker';
+        document.getElementById('routeSub').textContent = 'No route loaded';
+      }
+    }
+    renderRouteList();
+    renderEmptyState();
+  }
+
+  function deleteRoute(id){
+    if(!confirm('Delete "'+(routes[id]&&routes[id].name||'this route')+'"? This cannot be undone.')) return;
+    if(db){
+      db.collection('routes').doc(id).delete().catch(function(e){
+        setDrawerStatus('Could not delete: '+(e&&e.message||'unknown error'), true);
+      });
+    } else {
+      removeRouteLocal(id);
+    }
+  }
+
+  function setDrawerStatus(msg, isErr){
+    var el = document.getElementById('drawerStatus');
+    el.textContent = msg||'';
+    el.style.color = isErr ? 'var(--danger)' : 'var(--muted)';
+    if(msg) setTimeout(function(){ if(el.textContent===msg) el.textContent=''; }, 4000);
+  }
+
+  function addRouteFromParsed(parsed){
+    var id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    var data = { name: parsed.name, addedAt: new Date().toISOString(), track: parsed.track, stops: parsed.stops };
+    if(db){
+      db.collection('routes').doc(id).set(data).then(function(){
+        setDrawerStatus('Added "'+data.name+'".');
+      }).catch(function(e){
+        setDrawerStatus('Could not save: '+(e&&e.message||'unknown error')+' — kept for this session only.', true);
+        upsertRouteLocal(id, data);
+      });
+    } else {
+      upsertRouteLocal(id, data);
+      setDrawerStatus('Added "'+data.name+'" (this device only).');
+    }
+  }
+
+  /* ---------------- File upload ---------------- */
+  document.getElementById('fileInput').addEventListener('change', function(ev){
+    var files = Array.prototype.slice.call(ev.target.files||[]);
+    if(files.length===0) return;
+    setDrawerStatus('Reading '+files.length+' file'+(files.length>1?'s':'')+'…');
+    var remaining = files.length;
+    files.forEach(function(file){
+      var reader = new FileReader();
+      reader.onload = function(){
+        try{
+          var parsed = parseGPX(String(reader.result), file.name.replace(/\.[^.]+$/, ''));
+          addRouteFromParsed(parsed);
+        }catch(err){
+          setDrawerStatus('"'+file.name+'": '+err.message, true);
+        }
+        remaining--;
+      };
+      reader.onerror = function(){ setDrawerStatus('Could not read "'+file.name+'".', true); remaining--; };
+      reader.readAsText(file);
+    });
+    ev.target.value = '';
+  });
+
+  /* ---------------- Tabs & live schedule ---------------- */
+  var tabMapBtn = document.getElementById('tabMapBtn'), tabSchedBtn = document.getElementById('tabSchedBtn');
+  var mapView = document.getElementById('mapView'), scheduleView = document.getElementById('scheduleView');
+  function showTab(name){
+    if(name==='schedule'){
+      mapView.style.display = 'none'; scheduleView.style.display = 'flex';
+      tabSchedBtn.classList.add('active'); tabMapBtn.classList.remove('active');
+      renderSchedule();
+    } else {
+      scheduleView.style.display = 'none'; mapView.style.display = 'flex';
+      tabMapBtn.classList.add('active'); tabSchedBtn.classList.remove('active');
+      setTimeout(function(){ map.invalidateSize(); }, 0);
+    }
+  }
+  tabMapBtn.addEventListener('click', function(){ showTab('map'); });
+  tabSchedBtn.addEventListener('click', function(){ showTab('schedule'); });
+
+  function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  // Parse "HH:MM" against today's date (local time)
+  function timeToday(hhmm){
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm||'').trim());
+    if(!m) return null;
+    var d = new Date();
+    d.setHours(parseInt(m[1],10), parseInt(m[2],10), 0, 0);
+    return d;
+  }
+  function fmtMinutes(ms){
+    var mins = Math.round(Math.abs(ms)/60000);
+    if(mins < 1) return 'under a minute';
+    if(mins === 1) return '1 min';
+    if(mins < 60) return mins+' min';
+    var h = Math.floor(mins/60), m = mins%60;
+    return h+'h'+(m?' '+m+'m':'');
+  }
+
+  function renderSchedule(){
+    var r = activeId ? routes[activeId] : null;
+    var body = document.getElementById('schedBody');
+    if(!r){
+      body.innerHTML = '<div class="sched-empty">No route selected. Open ☰ to pick a route.</div>';
+      return;
+    }
+    var tt = r.timetable || {};
+    var sections = [];
+    if(tt.morning && tt.morning.length) sections.push({ label:'MORNING', rows:tt.morning, note:tt.morningNote });
+    if(tt.afternoon && tt.afternoon.length) sections.push({ label:'AFTERNOON', rows:tt.afternoon, note:tt.afternoonNote });
+
+    var html = '';
+    var now = new Date();
+
+    if(sections.length===0){
+      html += '<div class="sched-empty">No drop times saved for this route yet.</div>';
+    }
+
+    sections.forEach(function(sec){
+      // build parsed times, find "now" index
+      var times = sec.rows.map(function(row){ return timeToday(row.time); });
+      var nowIdx = -1;
+      for(var i=0;i<times.length;i++){
+        if(times[i] && times[i].getTime() <= now.getTime()) nowIdx = i;
+      }
+      var tripDone = (times[times.length-1] && now.getTime() > times[times.length-1].getTime() + 10*60000);
+
+      if(sections.length>1 || true){
+        html += '<div class="sched-section"><h3>'+sec.label+'</h3>';
+      }
+      sec.rows.forEach(function(row, i){
+        var cls = 'sched-row';
+        var status = '';
+        if(tripDone){
+          cls += ' past'; status = 'Done';
+        } else if(i < nowIdx){
+          cls += ' past'; status = 'Passed';
+        } else if(i === nowIdx){
+          cls += ' now'; status = 'Due now';
+        } else if(nowIdx===-1 && i===0){
+          var t = times[0];
+          status = t ? 'Starts in '+fmtMinutes(t.getTime()-now.getTime()) : 'Upcoming';
+        } else {
+          var t2 = times[i];
+          status = t2 ? 'In '+fmtMinutes(t2.getTime()-now.getTime()) : 'Upcoming';
+        }
+        var stopKey = sec.label+'-'+i;
+        html += '<div class="'+cls+'"><div class="sched-dot"></div><div class="sched-info">'+
+          '<div class="sched-stop">'+escapeHtml(row.stop)+'</div>'+
+          '<div class="sched-status">'+escapeHtml(status)+'</div>'+
+          '<div class="sched-pax">'+
+            '<span class="sched-pax-label">Onboard change:</span>'+
+            '<button class="sched-pax-btn off" data-stopkey="'+stopKey+'" data-dir="-1" aria-label="Passenger got off">−</button>'+
+            '<span class="n" data-stop-idx="'+stopKey+'">0</span>'+
+            '<button class="sched-pax-btn on" data-stopkey="'+stopKey+'" data-dir="1" aria-label="Passenger got on">+</button>'+
+          '</div>'+
+          '</div><div class="sched-time">'+escapeHtml(row.time)+'</div></div>';
+      });
+      if(sec.note) html += '<div class="sched-note">'+escapeHtml(sec.note)+'</div>';
+      html += '</div>';
+    });
+
+    if(r.operator){
+      html += '<div class="sched-section"><h3>OPERATOR</h3><div class="sched-op">'+
+        '<div>'+escapeHtml(r.operator.name)+'</div>'+
+        (r.operator.address ? '<div class="muted">'+escapeHtml(r.operator.address)+'</div>' : '')+
+        (r.operator.tel ? '<div class="muted">Tel: '+escapeHtml(r.operator.tel)+'</div>' : '')+
+        (r.capacity ? '<div class="muted">Capacity: '+escapeHtml(r.capacity)+'</div>' : '')+
+        '</div></div>';
+    }
+    if(r.specifiedRoute){
+      html += '<div class="sched-section"><h3>SPECIFIED ROUTE</h3><div class="sched-route-text">'+escapeHtml(r.specifiedRoute)+'</div></div>';
+    }
+    body.innerHTML = html;
+    renderPax();
+  }
+  document.getElementById('schedBody').addEventListener('click', function(e){
+    var btn = e.target.closest('.sched-pax-btn');
+    if(!btn) return;
+    paxAdjustStop(btn.getAttribute('data-stopkey'), parseInt(btn.getAttribute('data-dir'),10));
+  });
+  // Refresh the live shading every 20s while the schedule tab is open
+  setInterval(function(){
+    renderSchedule();
+  }, 20000);
+
+  /* ---------------- Drawer open/close ---------------- */
+  var drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim');
+  function openDrawer(){ drawer.classList.add('open'); scrim.classList.add('open'); }
+  function closeDrawer(){ drawer.classList.remove('open'); scrim.classList.remove('open'); }
+  document.getElementById('menuBtn').addEventListener('click', openDrawer);
+  document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+
+  /* ---------------- GPS tracking ---------------- */
+  var trackBtn = document.getElementById('trackBtn');
+  var navBtn = document.getElementById('navBtn');
+  var gpsNote = document.getElementById('gpsNote');
+
+  navBtn.addEventListener('click', function(){
+    var r = activeId ? routes[activeId] : null;
+    var pts = (r && r.stops && r.stops.length>=2) ? r.stops : (r && r.track && r.track.length>=2 ? [r.track[0], r.track[r.track.length-1]] : null);
+    if(!pts){
+      gpsNote.textContent = 'No stops on this route to navigate to yet.';
+      return;
+    }
+    // Google Maps' waypoints parameter tops out around 25 stops — thin
+    // the list evenly if a route ever has more than that, keeping the
+    // first and last stop fixed.
+    var MAX = 25;
+    var use = pts;
+    if(pts.length > MAX){
+      use = [pts[0]];
+      var step = (pts.length-1)/(MAX-1);
+      for(var i=1;i<MAX-1;i++) use.push(pts[Math.round(i*step)]);
+      use.push(pts[pts.length-1]);
+    }
+    var origin = use[0], dest = use[use.length-1];
+    var mid = use.slice(1,-1).map(function(p){ return p[0]+','+p[1]; }).join('|');
+    var url = 'https://www.google.com/maps/dir/?api=1'+
+      '&origin='+origin[0]+','+origin[1]+
+      '&destination='+dest[0]+','+dest[1]+
+      (mid ? '&waypoints='+encodeURIComponent(mid) : '')+
+      '&travelmode=driving';
+    window.open(url, '_blank', 'noopener');
+  });
+
+  var statSpeed = document.getElementById('statSpeed');
+  var statDist = document.getElementById('statDist');
+  var statDistUnit = document.getElementById('statDistUnit');
+  var statStop = document.getElementById('statStop');
+  var statStopDist = document.getElementById('statStopDist');
+
+  function onPosition(pos){
+    var c = pos.coords;
+    var latlng = [c.latitude, c.longitude];
+
+    if(!liveMarker){
+      liveMarker = L.marker(latlng, { icon: liveIcon(c.heading), zIndexOffset:1000 }).addTo(map);
+      liveMarker.bindPopup('');
+    } else {
+      liveMarker.setLatLng(latlng);
+      liveMarker.setIcon(liveIcon(c.heading));
+    }
+    liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
+    if(followMe) map.panTo(latlng, { animate:true });
+
+    var mph = null;
+    if(c.speed!==null && c.speed!==undefined && !isNaN(c.speed)){
+      mph = c.speed*2.23694;
+    } else if(lastFix){
+      var dt = (pos.timestamp - lastFix.timestamp)/1000;
+      if(dt>0.5){
+        var dm = haversineMeters(lastFix.latlng, latlng);
+        mph = (dm/dt)*2.23694;
+      }
+    }
+    statSpeed.textContent = mph===null ? '–' : Math.max(0, Math.round(mph));
+    lastFix = { latlng:latlng, timestamp:pos.timestamp };
+
+    var r = activeId ? routes[activeId] : null;
+    if(r){
+      var d = distanceToTrack(latlng, r.track && r.track.length>1 ? r.track : r.stops);
+      var fd = fmtDist(d);
+      statDist.textContent = fd.v; statDistUnit.textContent = fd.u;
+
+      var ns = nearestStop(latlng, r.stops);
+      if(ns){
+        statStop.textContent = '#'+(ns.index+1);
+        var fs = fmtDist(ns.dist);
+        statStopDist.textContent = fs.v+fs.u+' away';
+        stopsGroup.eachLayer(function(m){});
+      } else {
+        statStop.textContent = '–'; statStopDist.textContent = '';
+      }
+    } else {
+      statDist.textContent = '–'; statDistUnit.textContent = '';
+      statStop.textContent = '–'; statStopDist.textContent = '';
+    }
+    gpsNote.textContent = '';
+  }
+
+  function onPositionError(err){
+    var msg = 'GPS unavailable.';
+    if(err && err.code===1) msg = 'Location permission denied — enable it in your browser settings to track your position.';
+    else if(err && err.code===2) msg = 'Location signal unavailable right now.';
+    else if(err && err.code===3) msg = 'Location request timed out — still trying…';
+    gpsNote.textContent = msg;
+  }
+
+  trackBtn.addEventListener('click', function(){
+    if(!tracking){
+      if(!navigator.geolocation){
+        gpsNote.textContent = 'This browser does not support GPS location.';
+        return;
+      }
+      tracking = true;
+      followMe = true;
+      trackBtn.classList.add('on');
+      trackBtn.textContent = '■  Stop GPS tracking';
+      gpsNote.textContent = 'Finding your location…';
+      try{
+        watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
+          enableHighAccuracy:true, maximumAge:2000, timeout:15000
+        });
+      }catch(e){
+        gpsNote.textContent = 'Could not start GPS tracking.';
+        tracking = false; trackBtn.classList.remove('on'); trackBtn.textContent = '▶  Start GPS tracking';
+      }
+    } else {
+      tracking = false;
+      trackBtn.classList.remove('on');
+      trackBtn.textContent = '▶  Start GPS tracking';
+      gpsNote.textContent = '';
+      if(watchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+    }
+  });
+
+  document.getElementById('locateFab').addEventListener('click', function(){
+    followMe = true;
+    if(liveMarker) map.panTo(liveMarker.getLatLng(), { animate:true });
+    else if(!tracking) trackBtn.click();
+  });
+  map.on('dragstart', function(){ followMe = false; });
+
+  /* ---------------- Boot ---------------- */
+  function docToRoute(doc){
+    var d = doc.data() || {};
+    return {
+      id: doc.id, name: d.name, addedAt: d.addedAt,
+      track: d.track||[], stops: d.stops||[],
+      timetable: d.timetable, operator: d.operator,
+      capacity: d.capacity, specifiedRoute: d.specifiedRoute
+    };
+  }
+
+  async function boot(){
+    // 1) Show the built-in routes immediately, regardless of db.
+    Object.keys(DEFAULT_ROUTES).forEach(function(id){
+      routes[id] = Object.assign({id:id}, DEFAULT_ROUTES[id]);
+    });
+    var firstId = Object.keys(routes)[0];
+    if(firstId) setActiveRoute(firstId);
+    renderRouteList();
+    renderEmptyState();
+
+    // 2) Layer in the shared database, if this view can reach it.
+    try{
+      db = await claude.use('db');
+    }catch(e){ db = null; }
+
+    if(!db){ return; } // defaults stay as-is; uploads save to this device only
+
+    try{
+      unsubscribeRoutes = db.collection('routes').onSnapshot(function(snap){
+        try{
+          if(snap.docs.length === 0){
+            // Nothing in the shared store (yet) — keep showing the built-in
+            // defaults rather than blanking the app.
+            return;
+          }
+          var fresh = {};
+          snap.docs.forEach(function(doc){
+            if(doc.exists) fresh[doc.id] = docToRoute(doc);
+          });
+          routes = fresh;
+
+          if(!activeId || !routes[activeId]){
+            var saved = null;
+            try{ saved = localStorage.getItem('rt_active'); }catch(e){}
+            var pick = (saved && routes[saved]) ? saved : Object.keys(routes)[0];
+            if(pick) setActiveRoute(pick);
+          } else {
+            setActiveRoute(activeId); // refresh map/schedule with latest fields
+          }
+          renderRouteList();
+          renderEmptyState();
+        }catch(innerErr){
+          showError('Could not display synced routes: '+(innerErr&&innerErr.message||innerErr));
+        }
+      }, function(err){
+        setDrawerStatus('Sync unavailable ('+(err&&err.code||'error')+') — using routes saved on this device.', true);
+        db = null;
+      });
+    }catch(e){
+      db = null;
+      setDrawerStatus('Sync unavailable — using routes saved on this device.', true);
+    }
+  }
+  boot();
+
+})();
+</script>
+</body>
+</html>
