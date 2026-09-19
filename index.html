@@ -1080,7 +1080,8 @@ body{
   </div>
 
   <button class="track-btn" id="trackBtn">▶  Start GPS tracking</button>
-  <button class="track-btn nav-btn" id="firstStopBtn">📍  Directions to first stop ↗</button>
+  <button class="track-btn nav-btn" id="firstStopBtn">📍  Directions to first stop</button>
+  <div class="gps-note" id="guideNote"></div>
   <button class="track-btn nav-btn" id="navBtn">🧭  Navigate this route in Google Maps ↗</button>
   <div class="gps-note" id="gpsNote"></div>
 </div>
@@ -1482,6 +1483,7 @@ body{
     if(!r) return;
     activeId = id;
     getRouteNav(r);
+    if(typeof clearGuide==='function' && guiding) clearGuide();
     try{ localStorage.setItem('rt_active', id); }catch(e){}
     document.getElementById('routeName').textContent = r.name || 'Round Tracker';
     document.getElementById('routeSub').textContent = (r.stops?r.stops.length:0)+' stops · '+(r.track?r.track.length:0)+' track points';
@@ -1739,16 +1741,93 @@ body{
   var firstStopBtn = document.getElementById('firstStopBtn');
   var gpsNote = document.getElementById('gpsNote');
 
+  // Draws an in-app route to the first stop. Tries a free public road-routing
+  // service (no key needed) so the line follows real streets; if that request
+  // can't reach out — which is expected inside Claude's own sandbox, same
+  // restriction that blocks map tiles there — it falls back to a straight-line
+  // distance/bearing guide instead, computed entirely from the GPX data.
+  function fetchOsrmRoute(origin, dest){
+    var url = 'https://router.project-osrm.org/route/v1/driving/'+
+      origin[1]+','+origin[0]+';'+dest[1]+','+dest[0]+'?overview=full&geometries=geojson';
+    var controller = (typeof AbortController!=='undefined') ? new AbortController() : null;
+    var t = controller ? setTimeout(function(){ controller.abort(); }, 6000) : null;
+    return fetch(url, controller ? { signal: controller.signal } : {})
+      .then(function(res){
+        if(t) clearTimeout(t);
+        if(!res.ok) return null;
+        return res.json();
+      })
+      .then(function(data){
+        if(!data || data.code!=='Ok' || !data.routes || !data.routes.length) return null;
+        var route = data.routes[0];
+        var coords = route.geometry.coordinates.map(function(c){ return [c[1], c[0]]; });
+        return { coords:coords, distance:route.distance, duration:route.duration };
+      })
+      .catch(function(){ if(t) clearTimeout(t); return null; });
+  }
+  function fmtDuration(sec){
+    var m = Math.round(sec/60);
+    if(m<60) return m+' min';
+    var h=Math.floor(m/60), mm=m%60;
+    return h+'h'+(mm?' '+mm+'m':'');
+  }
+
+  var guideLine = null, guiding = false;
+  var guideNote = document.getElementById('guideNote');
+
+  function clearGuide(){
+    if(guideLine){ map.removeLayer(guideLine); guideLine=null; }
+    guiding = false;
+    firstStopBtn.classList.remove('on');
+    firstStopBtn.textContent = '📍  Directions to first stop';
+    guideNote.textContent = '';
+  }
+
   firstStopBtn.addEventListener('click', function(){
+    if(guiding){ clearGuide(); return; }
+
     var r = activeId ? routes[activeId] : null;
-    var pt = (r && r.stops && r.stops.length) ? r.stops[0] : (r && r.track && r.track.length ? r.track[0] : null);
-    if(!pt){
-      gpsNote.textContent = 'No stops on this route yet.';
-      return;
+    var target = (r && r.stops && r.stops.length) ? r.stops[0] : (r && r.track && r.track.length ? r.track[0] : null);
+    if(!target){ guideNote.textContent = 'No stops on this route yet.'; return; }
+
+    firstStopBtn.disabled = true;
+    guideNote.textContent = 'Finding your location…';
+
+    function withOrigin(origin){
+      guideNote.textContent = 'Working out a route to Stop 1…';
+      fetchOsrmRoute(origin, target).then(function(res){
+        if(guideLine){ map.removeLayer(guideLine); guideLine=null; }
+        if(res){
+          guideLine = L.polyline(res.coords, { color:getCss('--stop'), weight:5, opacity:.9, dashArray:'1,10', lineCap:'round' }).addTo(map);
+          var fd = fmtDist(res.distance);
+          guideNote.textContent = 'To Stop 1: '+fd.v+fd.u+' · about '+fmtDuration(res.duration)+' by road.';
+        } else {
+          var d = haversineMeters(origin, target);
+          guideLine = L.polyline([origin, target], { color:getCss('--stop'), weight:4, opacity:.85, dashArray:'2,10' }).addTo(map);
+          var fd2 = fmtDist(d);
+          guideNote.textContent = 'To Stop 1: '+fd2.v+fd2.u+' as the crow flies (no road-routing service reachable here — straight line shown).';
+        }
+        map.fitBounds(guideLine.getBounds(), { padding:[40,40] });
+        guiding = true;
+        firstStopBtn.disabled = false;
+        firstStopBtn.classList.add('on');
+        firstStopBtn.textContent = '✕  Clear guide to first stop';
+      });
     }
-    // No origin given — Google Maps uses the phone's current location automatically.
-    var url = 'https://www.google.com/maps/dir/?api=1&destination='+pt[0]+','+pt[1]+'&travelmode=driving';
-    window.open(url, '_blank', 'noopener');
+
+    if(tracking && lastFix){
+      withOrigin(lastFix.latlng);
+    } else if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(function(pos){
+        withOrigin([pos.coords.latitude, pos.coords.longitude]);
+      }, function(){
+        firstStopBtn.disabled = false;
+        guideNote.textContent = 'Could not get your location.';
+      }, { enableHighAccuracy:true, timeout:12000 });
+    } else {
+      firstStopBtn.disabled = false;
+      guideNote.textContent = 'This browser does not support GPS location.';
+    }
   });
 
   navBtn.addEventListener('click', function(){
