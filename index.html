@@ -1080,6 +1080,7 @@ body{
   </div>
 
   <button class="track-btn" id="trackBtn">▶  Start GPS tracking</button>
+  <button class="track-btn nav-btn" id="firstStopBtn">📍  Directions to first stop ↗</button>
   <button class="track-btn nav-btn" id="navBtn">🧭  Navigate this route in Google Maps ↗</button>
   <div class="gps-note" id="gpsNote"></div>
 </div>
@@ -1735,7 +1736,20 @@ body{
   /* ---------------- GPS tracking ---------------- */
   var trackBtn = document.getElementById('trackBtn');
   var navBtn = document.getElementById('navBtn');
+  var firstStopBtn = document.getElementById('firstStopBtn');
   var gpsNote = document.getElementById('gpsNote');
+
+  firstStopBtn.addEventListener('click', function(){
+    var r = activeId ? routes[activeId] : null;
+    var pt = (r && r.stops && r.stops.length) ? r.stops[0] : (r && r.track && r.track.length ? r.track[0] : null);
+    if(!pt){
+      gpsNote.textContent = 'No stops on this route yet.';
+      return;
+    }
+    // No origin given — Google Maps uses the phone's current location automatically.
+    var url = 'https://www.google.com/maps/dir/?api=1&destination='+pt[0]+','+pt[1]+'&travelmode=driving';
+    window.open(url, '_blank', 'noopener');
+  });
 
   navBtn.addEventListener('click', function(){
     var r = activeId ? routes[activeId] : null;
