@@ -790,8 +790,13 @@ body{
 .sched-pax-label{ font-size:11px; color:var(--muted); margin-right:2px; }
 
 /* ---------- Map ---------- */
-.map-wrap{ position:relative; flex:1 1 auto; min-height:0; }
-#map{ position:absolute; inset:0; background:var(--surface-2); }
+.map-wrap{ position:relative; flex:1 1 auto; min-height:0; perspective:1000px; }
+#map{
+  position:absolute; inset:0; background:var(--surface-2);
+  transform-origin:50% 82%;
+  transition:transform .35s ease;
+}
+#map.tilt-3d{ transform:rotateX(52deg) scale(1.65); }
 .leaflet-container{
   background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
 }
@@ -848,6 +853,26 @@ body{
   display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer;
 }
 .map-fab:active{ transform:scale(.94); }
+.map-fab.tilt-fab{ bottom:66px; font-size:16px; font-weight:700; }
+.map-fab.tilt-fab.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+
+/* ---------- Turn-by-turn nav banner ---------- */
+.nav-banner{
+  position:absolute; left:10px; right:10px; top:10px; z-index:440;
+  display:flex; gap:10px;
+}
+.nav-card{
+  flex:1; min-width:0; background:var(--surface); border:1px solid var(--line);
+  border-radius:13px; padding:9px 12px; box-shadow:var(--shadow);
+  display:flex; align-items:center; gap:9px;
+}
+.nav-card .arrow{
+  font-size:20px; flex:0 0 auto; width:26px; text-align:center; color:var(--accent);
+}
+.nav-card .txt{ min-width:0; }
+.nav-card .lbl{ font-size:9.5px; letter-spacing:.03em; color:var(--muted); font-weight:600; }
+.nav-card .val{ font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nav-card .dist{ font-family:"Big Shoulders Display", sans-serif; font-size:15px; font-weight:700; color:var(--accent); }
 
 .empty-state{
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
@@ -1008,6 +1033,17 @@ body{
 <div id="mapView" class="view">
 <div class="map-wrap">
   <div id="map"></div>
+  <div class="nav-banner" id="navBanner" style="display:none;">
+    <div class="nav-card">
+      <div class="arrow" id="navTurnArrow">→</div>
+      <div class="txt"><div class="lbl">NEXT TURN</div><div class="val" id="navTurnDist">–</div></div>
+    </div>
+    <div class="nav-card">
+      <div class="arrow">📍</div>
+      <div class="txt"><div class="lbl">NEXT STOP</div><div class="val" id="navStopDist">–</div></div>
+    </div>
+  </div>
+  <button class="map-fab tilt-fab" id="tiltFab" aria-label="Toggle 3D view">3D</button>
   <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
   <div class="empty-state" id="emptyState">
     <div class="glyph">🧭</div>
@@ -1234,6 +1270,58 @@ body{
     return { v: (m/1000).toFixed(1), u:' km' };
   }
 
+  // ----- Turn-by-turn (computed purely from the GPX track's own geometry —
+  // no routing/geocoding service involved, so this works with no network) -----
+  function bearing(a,b){
+    var lat1=toRad(a[0]), lat2=toRad(b[0]), dLon=toRad(b[1]-a[1]);
+    var y=Math.sin(dLon)*Math.cos(lat2);
+    var x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
+    return (Math.atan2(y,x)*180/Math.PI+360)%360;
+  }
+  function angleDiff(a,b){ return ((b-a+540)%360)-180; }
+  function findNearestTrackIndex(latlng, track){
+    if(!track||track.length===0) return -1;
+    var bestI=0, bestD=Infinity;
+    for(var i=0;i<track.length;i++){
+      var d=haversineMeters(latlng, track[i]);
+      if(d<bestD){ bestD=d; bestI=i; }
+    }
+    return bestI;
+  }
+  function computeTurns(track){
+    if(!track || track.length<3) return [];
+    var STEP=35; // metres between samples — smooths out raw GPS jitter
+    var pts=[track[0]], acc=0;
+    for(var i=1;i<track.length;i++){
+      acc += haversineMeters(track[i-1], track[i]);
+      if(acc>=STEP){ pts.push(track[i]); acc=0; }
+    }
+    if(pts[pts.length-1]!==track[track.length-1]) pts.push(track[track.length-1]);
+    if(pts.length<3) return [];
+    var turns=[];
+    for(var j=1;j<pts.length-1;j++){
+      var diff = angleDiff(bearing(pts[j-1],pts[j]), bearing(pts[j],pts[j+1]));
+      if(Math.abs(diff)>=28) turns.push({ latlng:pts[j], dir: diff>0?'right':'left', angle:Math.abs(diff) });
+    }
+    var merged=[];
+    turns.forEach(function(t){
+      var last=merged[merged.length-1];
+      if(last && haversineMeters(last.latlng,t.latlng)<70){ if(t.angle>last.angle) merged[merged.length-1]=t; }
+      else merged.push(t);
+    });
+    merged.forEach(function(t){ t.trackIdx = findNearestTrackIndex(t.latlng, track); });
+    return merged;
+  }
+  function getRouteNav(r){
+    if(!r) return null;
+    if(!r._navReady){
+      r._turns = computeTurns(r.track||[]);
+      r._stopTrackIdx = (r.stops||[]).map(function(s){ return findNearestTrackIndex(s, r.track||[]); });
+      r._navReady = true;
+    }
+    return r;
+  }
+
   /* ---------------- GPX parsing ---------------- */
   function parseGPX(text, fallbackName){
     var xml = new DOMParser().parseFromString(text, 'application/xml');
@@ -1392,6 +1480,7 @@ body{
     var r = routes[id];
     if(!r) return;
     activeId = id;
+    getRouteNav(r);
     try{ localStorage.setItem('rt_active', id); }catch(e){}
     document.getElementById('routeName').textContent = r.name || 'Round Tracker';
     document.getElementById('routeSub').textContent = (r.stops?r.stops.length:0)+' stops · '+(r.track?r.track.length:0)+' track points';
@@ -1724,11 +1813,46 @@ body{
       } else {
         statStop.textContent = '–'; statStopDist.textContent = '';
       }
+      updateNavBanner(r, latlng);
     } else {
       statDist.textContent = '–'; statDistUnit.textContent = '';
       statStop.textContent = '–'; statStopDist.textContent = '';
+      navBanner.style.display = 'none';
     }
     gpsNote.textContent = '';
+  }
+
+  var navBanner = document.getElementById('navBanner');
+  var navTurnArrow = document.getElementById('navTurnArrow');
+  var navTurnDist = document.getElementById('navTurnDist');
+  var navStopDist = document.getElementById('navStopDist');
+  var TURN_GLYPH = { left:'↰', right:'↱' };
+
+  function updateNavBanner(r, latlng){
+    if(!r.track || r.track.length<3){ navBanner.style.display='none'; return; }
+    getRouteNav(r);
+    navBanner.style.display = 'flex';
+    var progressIdx = findNearestTrackIndex(latlng, r.track);
+
+    var nextTurn = null;
+    for(var i=0;i<r._turns.length;i++){ if(r._turns[i].trackIdx >= progressIdx){ nextTurn = r._turns[i]; break; } }
+    if(nextTurn){
+      navTurnArrow.textContent = TURN_GLYPH[nextTurn.dir] || '↑';
+      var td = fmtDist(haversineMeters(latlng, nextTurn.latlng));
+      navTurnDist.textContent = (nextTurn.dir==='left'?'Left':'Right')+' in '+td.v+td.u;
+    } else {
+      navTurnArrow.textContent = '🏁';
+      navTurnDist.textContent = 'No more turns';
+    }
+
+    var nextStopI = -1;
+    for(var j=0;j<r._stopTrackIdx.length;j++){ if(r._stopTrackIdx[j] >= progressIdx){ nextStopI = j; break; } }
+    if(nextStopI>=0){
+      var sd = fmtDist(haversineMeters(latlng, r.stops[nextStopI]));
+      navStopDist.textContent = 'Stop '+(nextStopI+1)+' · '+sd.v+sd.u;
+    } else {
+      navStopDist.textContent = 'Route complete';
+    }
   }
 
   function onPositionError(err){
@@ -1763,8 +1887,24 @@ body{
       trackBtn.classList.remove('on');
       trackBtn.textContent = '▶  Start GPS tracking';
       gpsNote.textContent = '';
+      navBanner.style.display = 'none';
       if(watchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     }
+  });
+
+  // 3D tilt view — a pure CSS perspective trick (no separate 3D map engine).
+  // Dragging/scroll-zoom are turned off while tilted since screen-space mouse
+  // deltas no longer line up with the visually-skewed map; the centre-on-me
+  // and +/- zoom controls keep working normally.
+  document.getElementById('tiltFab').addEventListener('click', function(){
+    var el = document.getElementById('map');
+    var on = el.classList.toggle('tilt-3d');
+    this.classList.toggle('active', on);
+    try{
+      if(on){ map.dragging.disable(); map.scrollWheelZoom.disable(); map.doubleClickZoom.disable(); if(map.tap) map.tap.disable(); }
+      else{ map.dragging.enable(); map.scrollWheelZoom.enable(); map.doubleClickZoom.enable(); if(map.tap) map.tap.enable(); }
+    }catch(e){}
+    setTimeout(function(){ map.invalidateSize(); }, 380);
   });
 
   document.getElementById('locateFab').addEventListener('click', function(){
