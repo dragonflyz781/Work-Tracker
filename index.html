@@ -882,12 +882,20 @@ body.fs-mode #mapView{ flex:1 1 100% !important; border-right:none; }
 body.fs-mode .panel{ display:none; }
 body.fs-mode .fs-exit{ display:block !important; }
 body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
-body.fs-mode .fs-pax{ display:flex !important; }
+body.fs-mode .fs-pax-wrap{ display:flex !important; }
 
-.fs-pax{
+.fs-pax-wrap{
   display:none; position:absolute; left:50%; bottom:calc(16px + env(safe-area-inset-bottom, 0px));
   transform:translateX(-50%); z-index:470;
-  align-items:center; gap:0; background:var(--surface); border:1px solid var(--line);
+  flex-direction:column; align-items:center; gap:6px;
+}
+.fs-pax-context{
+  font-size:11px; font-weight:600; color:var(--text); background:var(--surface);
+  border:1px solid var(--line); border-radius:999px; padding:4px 11px; box-shadow:var(--shadow);
+  white-space:nowrap;
+}
+.fs-pax{
+  display:flex; align-items:center; gap:0; background:var(--surface); border:1px solid var(--line);
   border-radius:999px; box-shadow:var(--shadow); overflow:hidden;
 }
 .fs-pax-btn{
@@ -903,6 +911,7 @@ body.fs-mode .fs-pax{ display:flex !important; }
   padding:0 12px; border-left:1px solid var(--line); border-right:1px solid var(--line);
   min-width:16px; text-align:center;
 }
+.pax-context{ font-size:10.5px; color:var(--muted); text-align:center; margin-top:6px; }
 
 /* ---------- Turn-by-turn nav banner ---------- */
 .nav-banner{
@@ -1096,10 +1105,13 @@ body.fs-mode .fs-pax{ display:flex !important; }
   <button class="map-fab" id="fsFab" aria-label="Full screen map">⛶</button>
   <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
   <button class="fs-exit" id="fsExit" style="display:none;">✕ Exit full screen</button>
-  <div class="fs-pax" id="fsPax">
-    <button class="fs-pax-btn off" id="fsPaxOff" aria-label="Passenger got off">− Alight</button>
-    <div class="fs-pax-count" id="fsPaxCount">0</div>
-    <button class="fs-pax-btn on" id="fsPaxOn" aria-label="Passenger got on">+ Board</button>
+  <div class="fs-pax-wrap" id="fsPaxWrap">
+    <div class="fs-pax-context" id="fsPaxContext"></div>
+    <div class="fs-pax" id="fsPax">
+      <button class="fs-pax-btn off" id="fsPaxOff" aria-label="Passenger got off">− Alight</button>
+      <div class="fs-pax-count" id="fsPaxCount">0</div>
+      <button class="fs-pax-btn on" id="fsPaxOn" aria-label="Passenger got on">+ Board</button>
+    </div>
   </div>
   <div class="empty-state" id="emptyState">
     <div class="glyph">🧭</div>
@@ -1134,6 +1146,7 @@ body.fs-mode .fs-pax{ display:flex !important; }
     <button class="pax-btn on" data-pax="on">+ Board</button>
     <button class="pax-reset" data-pax="reset" aria-label="Reset count">↺</button>
   </div>
+  <div class="pax-context" id="paxContext"></div>
 
   <button class="track-btn" id="trackBtn">▶  Start GPS tracking</button>
   <button class="track-btn nav-btn" id="firstStopBtn">📍  Directions to first stop</button>
@@ -1414,13 +1427,25 @@ body.fs-mode .fs-pax{ display:flex !important; }
   var unsubscribeRoutes = null;
 
   /* ---------------- Passenger counter (per route, this device) ---------------- */
-  var pax = { byStop:{}, adhoc:0 }; // byStop: stopIndex -> net count at that stop
+  var pax = { byStop:{}, byGpsStop:{}, adhoc:0 };
+  // byStop: schedule-row key ("MORNING-0"...) -> net count, set from the Schedule tab's own +/- controls.
+  // byGpsStop: r.stops index -> net count, set from the Board/Alight buttons WHILE the live GPS position is at that stop.
+  // adhoc: Board/Alight taps made when GPS isn't near any numbered stop (e.g. an unscheduled pickup).
+  var currentGpsStopIdx = null;
+  var AT_STOP_RADIUS_M = 60;
   function paxKey(routeId){ return 'rt_pax_'+routeId; }
   function loadPax(routeId){
-    var out = { byStop:{}, adhoc:0 };
+    var out = { byStop:{}, byGpsStop:{}, adhoc:0 };
     try{
       var raw = localStorage.getItem(paxKey(routeId));
-      if(raw){ var parsed = JSON.parse(raw); if(parsed && typeof parsed==='object'){ out.byStop = parsed.byStop||{}; out.adhoc = parsed.adhoc||0; } }
+      if(raw){
+        var parsed = JSON.parse(raw);
+        if(parsed && typeof parsed==='object'){
+          out.byStop = parsed.byStop||{};
+          out.byGpsStop = parsed.byGpsStop||{};
+          out.adhoc = parsed.adhoc||0;
+        }
+      }
     }catch(e){}
     return out;
   }
@@ -1430,6 +1455,7 @@ body.fs-mode .fs-pax{ display:flex !important; }
   function paxTotal(){
     var t = pax.adhoc;
     Object.keys(pax.byStop).forEach(function(k){ t += pax.byStop[k]; });
+    Object.keys(pax.byGpsStop).forEach(function(k){ t += pax.byGpsStop[k]; });
     return Math.max(0, t);
   }
   function renderPax(){
@@ -1441,9 +1467,26 @@ body.fs-mode .fs-pax{ display:flex !important; }
     document.querySelectorAll('.sched-pax .n').forEach(function(el){
       el.textContent = pax.byStop[el.getAttribute('data-stop-idx')] || 0;
     });
+    renderPaxContext();
+  }
+  // Shows which stop Board/Alight will be logged against right now, next to
+  // the quick-tap buttons (main panel + full-screen), so it's never a guess.
+  function renderPaxContext(){
+    var text = (currentGpsStopIdx!=null)
+      ? 'At Stop '+(currentGpsStopIdx+1)+' — taps log to this stop'
+      : (tracking ? 'Between stops — taps log as unscheduled' : 'Start GPS tracking to log by stop');
+    ['paxContext','fsPaxContext'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.textContent = text;
+    });
   }
   function paxAdjust(delta){
-    pax.adhoc += delta;
+    if(currentGpsStopIdx!=null){
+      var cur = pax.byGpsStop[currentGpsStopIdx] || 0;
+      pax.byGpsStop[currentGpsStopIdx] = cur + delta;
+    } else {
+      pax.adhoc += delta;
+    }
     if(activeId) savePax(activeId);
     renderPax();
   }
@@ -1455,7 +1498,7 @@ body.fs-mode .fs-pax{ display:flex !important; }
   }
   function paxReset(){
     if(!confirm('Reset the onboard passenger count for this route?')) return;
-    pax = { byStop:{}, adhoc:0 };
+    pax = { byStop:{}, byGpsStop:{}, adhoc:0 };
     if(activeId) savePax(activeId);
     renderPax();
   }
@@ -1572,6 +1615,7 @@ body.fs-mode .fs-pax{ display:flex !important; }
     renderRouteList();
     renderEmptyState();
     pax = loadPax(id);
+    currentGpsStopIdx = null;
     renderPax();
     renderSchedule();
   }
@@ -1989,11 +2033,18 @@ body.fs-mode .fs-pax{ display:flex !important; }
       } else {
         statStop.textContent = '–'; statStopDist.textContent = '';
       }
+      // "At a stop" for passenger-count purposes means genuinely close by —
+      // a tight radius so Board/Alight taps don't get misattributed while
+      // still moving between stops.
+      currentGpsStopIdx = (ns && ns.dist<=AT_STOP_RADIUS_M) ? ns.index : null;
+      renderPaxContext();
       updateNavBanner(r, latlng);
     } else {
       statDist.textContent = '–'; statDistUnit.textContent = '';
       statStop.textContent = '–'; statStopDist.textContent = '';
       navBanner.style.display = 'none';
+      currentGpsStopIdx = null;
+      renderPaxContext();
     }
     gpsNote.textContent = '';
   }
