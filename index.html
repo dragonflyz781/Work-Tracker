@@ -2322,11 +2322,22 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     if(!w || !h) return;
     var side = Math.ceil(Math.sqrt(w*w + h*h) * 1.06); // +6% safety margin
     var el = document.getElementById('map');
+    var loaded = map && map._loaded;
+    // Leaflet's invalidateSize tries to auto-compensate by panning when a
+    // container's size changes — but that heuristic isn't meant for a jump
+    // this large (a normal viewport to a diagonal-sized square), and it was
+    // throwing the visible centre/zoom way off. Simplest reliable fix:
+    // remember exactly where we were looking, resize, then put it back.
+    var savedCenter = loaded ? map.getCenter() : null;
+    var savedZoom = loaded ? map.getZoom() : null;
     el.style.width = side+'px';
     el.style.height = side+'px';
     el.style.left = Math.round((w-side)/2)+'px';
     el.style.top = Math.round((h-side)/2)+'px';
-    if(map && map._loaded) map.invalidateSize();
+    if(loaded){
+      map.invalidateSize({ animate:false, pan:false });
+      if(savedCenter) map.setView(savedCenter, savedZoom, { animate:false });
+    }
   }
 
   var overscanResizeTimer = null;
