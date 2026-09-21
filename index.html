@@ -790,29 +790,9 @@ body{
 .sched-pax-label{ font-size:11px; color:var(--muted); margin-right:2px; }
 
 /* ---------- Map ----------
-   Flat 2D only — no fake-3D tilt. #mapSpin rotates the whole map around
-   its centre to face your direction of travel while tracking; #map itself
-   carries no transform of its own. Clipping is layered three ways
-   (overflow, contain, clip-path) since plain overflow:hidden alone isn't
-   always respected around rotated content on some Android Chrome builds. */
-.map-wrap{
-  position:relative; flex:1 1 auto; min-height:0;
-  overflow:hidden; contain:paint; clip-path:inset(0);
-}
-#mapSpin{
-  position:absolute; inset:0;
-  transform-origin:50% 50%;
-  transition:transform .2s linear;
-  overflow:hidden; contain:paint; clip-path:inset(0);
-}
-#map{
-  /* Size/position set in JS (sizeMapOverscan) to a square matching the
-     viewport's own diagonal, centred — see the comment there for why a
-     flat percentage isn't enough on a tall phone screen. Starting values
-     here just avoid a zero-size flash before JS runs. */
-  position:absolute; top:-25%; left:-25%; width:150%; height:150%;
-  background:var(--surface-2);
-}
+   Fixed, plain, north-up. No rotation. */
+.map-wrap{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+#map{ position:absolute; inset:0; background:var(--surface-2); }
 .leaflet-container{
   background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
 }
@@ -1156,7 +1136,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 <div id="views">
 <div id="mapView" class="view">
 <div class="map-wrap">
-  <div id="mapSpin"><div id="map"></div></div>
+  <div id="map"></div>
   <div class="nav-banner" id="navBanner" style="display:none;">
     <div class="nav-card">
       <div class="arrow" id="navTurnArrow">→</div>
@@ -1183,7 +1163,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     <div class="sb-stat"><div class="sb-val" id="sbSpeed">–</div><div class="sb-lbl">MPH</div></div>
     <div class="sb-stat"><div class="sb-val" id="sbStop">–</div><div class="sb-lbl">NEXT STOP</div></div>
   </div>
-  <div class="compass-badge" aria-label="Points to true north">N<span class="tick" id="compassTick">▲</span></div>
+  <div class="compass-badge" aria-label="Map is fixed north-up">N<span class="tick">▲</span></div>
   <div class="zoom-cluster">
     <button class="map-fab zoom-btn" id="zoomInFab" aria-label="Zoom in">+</button>
     <button class="map-fab zoom-btn" id="zoomOutFab" aria-label="Zoom out">−</button>
@@ -1317,9 +1297,8 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   // GitHub Pages). Inside Claude's published-artifact sandbox, external
   // image loads are blocked, so we detect that and fall back gracefully
   // to a plain grid + "Open in Maps" links — no separate build needed.
-  // No Leaflet zoom/scale control here — they'd live inside #mapSpin and
-  // rotate (and now sit off-screen) along with the map. Fixed +/- buttons
-  // outside the rotating layer are added further down instead.
+  // Zoom control is a custom fixed +/- button pair (added further down)
+  // instead of Leaflet's own, to match the app's styling.
   var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([51.5, -0.12], 6);
 
   var tilesConfirmed = false;
@@ -1353,7 +1332,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   }
   // Give tiles a few seconds to prove themselves before assuming they're blocked.
   setTimeout(function(){ if(!tilesConfirmed) showNoTilesBanner(); }, 3500);
-  setTimeout(function(){ sizeMapOverscan(); }, 150);
+  setTimeout(function(){ map.invalidateSize(); }, 150);
 
   function mapsLink(lat, lng){
     return 'https://www.google.com/maps/search/?api=1&query='+lat+','+lng;
@@ -1383,36 +1362,15 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   function toRad(d){ return d*Math.PI/180; }
   // Sat-nav-style follow camera: keeps your position anchored toward the
   // bottom of the screen (not dead centre) so more of the road ahead is
-  // visible. Has to account for the map's current CSS rotation (mapHeadingDeg)
-  // since Leaflet itself always thinks in un-rotated pixel space — the actual
-  // point we ask Leaflet to centre on is the rotation-corrected equivalent
-  // of "bottom-centre of the screen".
-  var FOLLOW_ANCHOR_Y = 0.74; // fraction down the *visible* screen, 0=top 1=bottom
-  function rotatePointAround(pt, center, angleDeg){
-    var rad = angleDeg*Math.PI/180, cos = Math.cos(rad), sin = Math.sin(rad);
-    var dx = pt.x-center.x, dy = pt.y-center.y;
-    return L.point(center.x + dx*cos - dy*sin, center.y + dx*sin + dy*cos);
-  }
+  // visible, rather than what's behind you.
+  var FOLLOW_ANCHOR_Y = 0.74; // fraction down the screen, 0=top 1=bottom
   function panKeepingBottom(latlng){
     if(!map._loaded){ map.panTo(latlng, { animate:true }); return; }
-    // #map is intentionally larger than the visible viewport (see CSS) so
-    // rotation never exposes its corners. That means Leaflet's own notion
-    // of its container size (map.getSize()) is bigger than what's actually
-    // on screen — everything below works in *visible* screen pixels first,
-    // then converts into Leaflet's oversized internal space at the end.
-    var visibleRect = document.querySelector('.map-wrap').getBoundingClientRect();
-    var visibleW = visibleRect.width, visibleH = visibleRect.height;
-    var visibleCenter = L.point(visibleW/2, visibleH/2);
-    var desiredScreen = L.point(visibleW/2, visibleH*FOLLOW_ANCHOR_Y);
-    var desiredLocal = mapHeadingDeg ? rotatePointAround(desiredScreen, visibleCenter, -mapHeadingDeg) : desiredScreen;
-
-    var mapSize = map.getSize();
-    var overscanX = (mapSize.x - visibleW)/2, overscanY = (mapSize.y - visibleH)/2;
-    var desiredLeaflet = L.point(desiredLocal.x + overscanX, desiredLocal.y + overscanY);
-    var leafletCenter = L.point(mapSize.x/2, mapSize.y/2);
-
+    var size = map.getSize();
+    var desired = L.point(size.x/2, size.y*FOLLOW_ANCHOR_Y);
+    var center = L.point(size.x/2, size.y/2);
     var targetPoint = map.project(latlng, map.getZoom());
-    var offset = desiredLeaflet.subtract(leafletCenter);
+    var offset = desired.subtract(center);
     var newCenter = map.unproject(targetPoint.subtract(offset), map.getZoom());
     map.panTo(newCenter, { animate:true });
   }
@@ -1841,7 +1799,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     } else {
       scheduleView.style.display = 'none'; mapView.style.display = 'flex';
       tabMapBtn.classList.add('active'); tabSchedBtn.classList.remove('active');
-      setTimeout(function(){ sizeMapOverscan(); }, 0);
+      setTimeout(function(){ map.invalidateSize(); }, 0);
     }
   }
   tabMapBtn.addEventListener('click', function(){ showTab('map'); });
@@ -2130,12 +2088,6 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       liveMarker.setLatLng(latlng);
     }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
-
-    if(tracking && c.heading!=null && !isNaN(c.heading)){
-      mapHeadingDeg = -c.heading;
-      applyMapTransform();
-    }
-    applyMarkerCounterRotation();
     if(followMe) panKeepingBottom(latlng);
 
     var mph = null;
@@ -2292,87 +2244,10 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       trackBtn.textContent = '▶  Start GPS tracking';
       gpsNote.textContent = '';
       navBanner.style.display = 'none';
-      resetMapHeading();
       if(document.body.classList.contains('satnav-mode') && typeof endSatnav==='function') endSatnav();
       if(watchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     }
   });
-
-  // Heading-up map: whenever GPS tracking is on and a device heading is
-  // available, the map spins to face your direction of travel — on top of
-  // Flat rotation only — no 3D tilt. Two things stay correct no matter how
-  // far the map has turned:
-  //  - the live GPS marker is counter-rotated each time, so it always
-  //    points true north on screen, never the spun map orientation
-  //  - the compass badge's tick swings to keep pointing at true north too
-  // Dragging/scroll-zoom are turned off while rotated, since screen-space
-  // mouse deltas stop lining up with what's drawn once the map is spun —
-  // the centre-on-me and +/- zoom buttons keep working normally throughout.
-  // A rotated square's INSCRIBED circle has radius = side/2, unaffected by
-  // rotation angle. So if #map is a square whose side is at least the
-  // *diagonal* of the visible viewport, that inscribed circle always fully
-  // contains the viewport rectangle (whose farthest points — its corners —
-  // sit exactly at half that diagonal from centre), at any rotation angle,
-  // on any aspect ratio. A flat percentage (e.g. 150%) doesn't guarantee
-  // this on a phone screen, where height is much larger than width — the
-  // diagonal is proportionally far longer than either side alone.
-  function sizeMapOverscan(){
-    var wrap = document.querySelector('.map-wrap');
-    var w = wrap.clientWidth, h = wrap.clientHeight;
-    if(!w || !h) return;
-    var side = Math.ceil(Math.sqrt(w*w + h*h) * 1.06); // +6% safety margin
-    var el = document.getElementById('map');
-    var loaded = map && map._loaded;
-    // Leaflet's invalidateSize tries to auto-compensate by panning when a
-    // container's size changes — but that heuristic isn't meant for a jump
-    // this large (a normal viewport to a diagonal-sized square), and it was
-    // throwing the visible centre/zoom way off. Simplest reliable fix:
-    // remember exactly where we were looking, resize, then put it back.
-    var savedCenter = loaded ? map.getCenter() : null;
-    var savedZoom = loaded ? map.getZoom() : null;
-    el.style.width = side+'px';
-    el.style.height = side+'px';
-    el.style.left = Math.round((w-side)/2)+'px';
-    el.style.top = Math.round((h-side)/2)+'px';
-    if(loaded){
-      map.invalidateSize({ animate:false, pan:false });
-      if(savedCenter) map.setView(savedCenter, savedZoom, { animate:false });
-    }
-  }
-
-  var overscanResizeTimer = null;
-  window.addEventListener('resize', function(){
-    clearTimeout(overscanResizeTimer);
-    overscanResizeTimer = setTimeout(sizeMapOverscan, 150);
-  });
-
-  var mapHeadingDeg = 0;
-  function applyMapTransform(){
-    var spinEl = document.getElementById('mapSpin');
-    spinEl.style.transform = mapHeadingDeg ? 'rotate('+mapHeadingDeg+'deg)' : '';
-    var tick = document.getElementById('compassTick');
-    if(tick) tick.style.transform = mapHeadingDeg ? 'rotate('+mapHeadingDeg+'deg)' : '';
-    updateInteractionLock();
-  }
-  function applyMarkerCounterRotation(){
-    if(!liveMarker || !liveMarker.getElement) return;
-    var iconEl = liveMarker.getElement();
-    var wrap = iconEl && iconEl.querySelector('.live-dot-wrap');
-    if(wrap) wrap.style.transform = mapHeadingDeg ? 'rotate('+(-mapHeadingDeg)+'deg)' : '';
-  }
-  function updateInteractionLock(){
-    var shouldLock = !!mapHeadingDeg;
-    try{
-      if(shouldLock){ map.dragging.disable(); map.scrollWheelZoom.disable(); map.doubleClickZoom.disable(); if(map.tap) map.tap.disable(); }
-      else{ map.dragging.enable(); map.scrollWheelZoom.enable(); map.doubleClickZoom.enable(); if(map.tap) map.tap.enable(); }
-    }catch(e){}
-  }
-  function resetMapHeading(){
-    if(!mapHeadingDeg) return;
-    mapHeadingDeg = 0;
-    applyMapTransform();
-    applyMarkerCounterRotation();
-  }
 
   // Full-screen map: hides the top bar / tabs / bottom panel so the map
   // fills the screen. Also tries the browser's native Fullscreen API (hides
@@ -2396,13 +2271,9 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
         else if(document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
       }catch(e){}
     }
-    // The real Fullscreen API transition can take longer than a single
-    // short timeout to actually finish resizing the viewport — sizing the
-    // overscan square too early (against the old, smaller size) leaves a
-    // gap once the transition catches up. Retry a few times cheaply rather
-    // than guess one "safe" delay; fullscreenchange (below) also triggers
-    // this the moment the transition genuinely completes.
-    [120, 350, 700].forEach(function(ms){ setTimeout(sizeMapOverscan, ms); });
+    // The real Fullscreen API transition can take a moment to actually
+    // finish resizing the viewport, so retry a couple of times.
+    [120, 350].forEach(function(ms){ setTimeout(function(){ map.invalidateSize(); }, ms); });
   }
   fsFab.addEventListener('click', function(){
     if(document.body.classList.contains('satnav-mode')){ endSatnav(); return; }
@@ -2441,7 +2312,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     if(document.body.classList.contains('satnav-mode')) endSatnav(); else setFullscreen(false);
   });
   document.addEventListener('fullscreenchange', function(){
-    setTimeout(sizeMapOverscan, 30);
+    setTimeout(function(){ map.invalidateSize(); }, 30);
     if(document.fullscreenElement) return;
     if(document.body.classList.contains('satnav-mode')) endSatnav();
     else if(document.body.classList.contains('fs-mode')) setFullscreen(false);
