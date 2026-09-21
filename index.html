@@ -932,6 +932,48 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
 .nav-card .val{ font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .nav-card .dist{ font-family:"Big Shoulders Display", sans-serif; font-size:15px; font-weight:700; color:var(--accent); }
 
+/* ---------- Sat-Nav mode ---------- */
+.satnav-btn{ background:var(--accent); color:var(--accent-ink); }
+.satnav-btn.on{ background:var(--surface-2); color:var(--text); border:1px solid var(--line); }
+
+body.satnav-mode .nav-banner{ display:none !important; }
+body.satnav-mode .notile-banner{ top:calc(96px + env(safe-area-inset-top, 0px)); }
+
+.satnav-top{
+  position:absolute; left:0; right:0; top:0; z-index:440;
+  padding:calc(12px + env(safe-area-inset-top, 0px)) 14px 12px;
+  background:var(--accent); color:var(--accent-ink);
+  display:flex; align-items:center; gap:14px;
+  box-shadow:0 6px 18px rgba(0,0,0,.25);
+}
+.satnav-arrow{ font-size:38px; line-height:1; flex:0 0 auto; width:48px; text-align:center; }
+.satnav-info{ min-width:0; }
+.satnav-dist{ font-family:"Big Shoulders Display", sans-serif; font-size:30px; font-weight:700; line-height:1; }
+.satnav-instr{ font-size:14px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.satnav-then{
+  position:absolute; left:14px; top:calc(92px + env(safe-area-inset-top, 0px)); z-index:435;
+  display:none; align-items:center; gap:8px;
+  background:var(--surface); color:var(--muted); border:1px solid var(--line);
+  border-radius:999px; padding:6px 12px 6px 8px; font-size:11.5px; font-weight:600;
+  box-shadow:var(--shadow);
+}
+.satnav-then .then-arrow{ font-size:14px; color:var(--text); }
+
+.satnav-bottom{
+  display:none; position:absolute; left:10px; right:10px; bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index:440; background:var(--surface); border:1px solid var(--line); border-radius:15px;
+  box-shadow:var(--shadow); padding:10px 6px; align-items:stretch;
+}
+.sb-stat{ flex:1; text-align:center; padding:0 4px; border-right:1px solid var(--line); }
+.sb-stat:last-child{ border-right:none; }
+.sb-val{ font-family:"Big Shoulders Display", sans-serif; font-size:18px; font-weight:700; line-height:1.1; }
+.sb-lbl{ font-size:9px; letter-spacing:.03em; color:var(--muted); font-weight:600; margin-top:2px; }
+
+/* In sat-nav mode the fullscreen exit button doubles as "End Sat-Nav" and
+   sits below the big top instruction card instead of overlapping it. */
+body.satnav-mode .fs-exit{ top:calc(96px + env(safe-area-inset-top, 0px)); }
+body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0px)); }
+
 .empty-state{
   position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   flex-direction:column; gap:12px; padding:30px; text-align:center; z-index:300;
@@ -1101,6 +1143,22 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
       <div class="txt"><div class="lbl">NEXT STOP</div><div class="val" id="navStopDist">–</div></div>
     </div>
   </div>
+
+  <div class="satnav-top" id="satnavTop" style="display:none;">
+    <div class="satnav-arrow" id="satnavArrow">↑</div>
+    <div class="satnav-info">
+      <div class="satnav-dist" id="satnavDist">–</div>
+      <div class="satnav-instr" id="satnavInstr">–</div>
+    </div>
+  </div>
+  <div class="satnav-then" id="satnavThen" style="display:none;"></div>
+
+  <div class="satnav-bottom" id="satnavBottom" style="display:none;">
+    <div class="sb-stat"><div class="sb-val" id="sbEta">–</div><div class="sb-lbl">ETA</div></div>
+    <div class="sb-stat"><div class="sb-val" id="sbRemaining">–</div><div class="sb-lbl">REMAINING</div></div>
+    <div class="sb-stat"><div class="sb-val" id="sbSpeed">–</div><div class="sb-lbl">MPH</div></div>
+    <div class="sb-stat"><div class="sb-val" id="sbStop">–</div><div class="sb-lbl">NEXT STOP</div></div>
+  </div>
   <div class="compass-badge" aria-label="Points to true north">N<span class="tick" id="compassTick">▲</span></div>
   <button class="map-fab tilt-fab" id="tiltFab" aria-label="Toggle 3D view">3D</button>
   <button class="map-fab" id="fsFab" aria-label="Full screen map">⛶</button>
@@ -1149,6 +1207,7 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
   </div>
   <div class="pax-context" id="paxContext"></div>
 
+  <button class="track-btn satnav-btn" id="satnavBtn">🛰️  Start Sat-Nav mode</button>
   <button class="track-btn" id="trackBtn">▶  Start GPS tracking</button>
   <button class="track-btn nav-btn" id="firstStopBtn">📍  Directions to first stop</button>
   <div class="gps-note" id="guideNote"></div>
@@ -1392,6 +1451,9 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
     if(!r._navReady){
       r._turns = computeTurns(r.track||[]);
       r._stopTrackIdx = (r.stops||[]).map(function(s){ return findNearestTrackIndex(s, r.track||[]); });
+      var cum=[0];
+      for(var i=1;i<(r.track||[]).length;i++) cum.push(cum[i-1]+haversineMeters(r.track[i-1], r.track[i]));
+      r._cum = cum;
       r._navReady = true;
     }
     return r;
@@ -2050,6 +2112,8 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
       statDist.textContent = '–'; statDistUnit.textContent = '';
       statStop.textContent = '–'; statStopDist.textContent = '';
       navBanner.style.display = 'none';
+      satnavTop.style.display = 'none';
+      satnavThen.style.display = 'none';
       currentGpsStopIdx = null;
       renderPaxContext();
     }
@@ -2062,21 +2126,48 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
   var navStopDist = document.getElementById('navStopDist');
   var TURN_GLYPH = { left:'↰', right:'↱' };
 
+  var satnavTop = document.getElementById('satnavTop');
+  var satnavArrow = document.getElementById('satnavArrow');
+  var satnavDist = document.getElementById('satnavDist');
+  var satnavInstr = document.getElementById('satnavInstr');
+  var satnavThen = document.getElementById('satnavThen');
+  var sbEta = document.getElementById('sbEta');
+  var sbRemaining = document.getElementById('sbRemaining');
+  var sbSpeed = document.getElementById('sbSpeed');
+  var sbStop = document.getElementById('sbStop');
+
   function updateNavBanner(r, latlng){
-    if(!r.track || r.track.length<3){ navBanner.style.display='none'; return; }
+    if(!r.track || r.track.length<3){ navBanner.style.display='none'; satnavTop.style.display='none'; satnavThen.style.display='none'; return; }
     getRouteNav(r);
-    navBanner.style.display = 'flex';
+    var inSatnav = document.body.classList.contains('satnav-mode');
+    navBanner.style.display = inSatnav ? 'none' : 'flex';
+    satnavTop.style.display = inSatnav ? 'flex' : 'none';
+
     var progressIdx = findNearestTrackIndex(latlng, r.track);
 
-    var nextTurn = null;
-    for(var i=0;i<r._turns.length;i++){ if(r._turns[i].trackIdx >= progressIdx){ nextTurn = r._turns[i]; break; } }
+    var nextTurn = null, nextTurnPos = -1;
+    for(var i=0;i<r._turns.length;i++){ if(r._turns[i].trackIdx >= progressIdx){ nextTurn = r._turns[i]; nextTurnPos = i; break; } }
+    var thenTurn = (nextTurnPos>=0 && r._turns[nextTurnPos+1]) ? r._turns[nextTurnPos+1] : null;
+
     if(nextTurn){
-      navTurnArrow.textContent = TURN_GLYPH[nextTurn.dir] || '↑';
+      var glyph = TURN_GLYPH[nextTurn.dir] || '↑';
+      var label = (nextTurn.dir==='left'?'Left':'Right')+(nextTurn.angle>=80?' turn':'');
       var td = fmtDist(haversineMeters(latlng, nextTurn.latlng));
-      navTurnDist.textContent = (nextTurn.dir==='left'?'Left':'Right')+' in '+td.v+td.u;
+      navTurnArrow.textContent = glyph;
+      navTurnDist.textContent = label+' in '+td.v+td.u;
+      satnavArrow.textContent = glyph;
+      satnavDist.textContent = td.v+td.u;
+      satnavInstr.textContent = label;
     } else {
-      navTurnArrow.textContent = '🏁';
-      navTurnDist.textContent = 'No more turns';
+      navTurnArrow.textContent = '🏁'; navTurnDist.textContent = 'No more turns';
+      satnavArrow.textContent = '🏁'; satnavDist.textContent = '–'; satnavInstr.textContent = 'No more turns';
+    }
+    if(inSatnav && thenTurn){
+      var thenGlyph = TURN_GLYPH[thenTurn.dir] || '↑';
+      satnavThen.style.display = 'flex';
+      satnavThen.innerHTML = 'Then <span class="then-arrow">'+thenGlyph+'</span> '+(thenTurn.dir==='left'?'left':'right');
+    } else {
+      satnavThen.style.display = 'none';
     }
 
     var nextStopI = -1;
@@ -2084,8 +2175,23 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
     if(nextStopI>=0){
       var sd = fmtDist(haversineMeters(latlng, r.stops[nextStopI]));
       navStopDist.textContent = 'Stop '+(nextStopI+1)+' · '+sd.v+sd.u;
+      sbStop.textContent = '#'+(nextStopI+1)+' '+sd.v+sd.u;
     } else {
       navStopDist.textContent = 'Route complete';
+      sbStop.textContent = '–';
+    }
+
+    if(inSatnav){
+      var remainM = Math.max(0, (r._cum[r._cum.length-1]||0) - (r._cum[progressIdx]||0));
+      var rd = fmtDist(remainM);
+      sbRemaining.textContent = rd.v+rd.u;
+      var curMph = parseFloat(statSpeed.textContent);
+      var planMph = (!isNaN(curMph) && curMph>5) ? Math.min(curMph, COACH_MAX_MPH) : Math.min(30, COACH_MAX_MPH);
+      sbSpeed.textContent = isNaN(curMph) ? '–' : Math.round(curMph);
+      var etaMinutes = Math.round((remainM/1609.34)/planMph*60);
+      var etaDate = new Date(Date.now()+etaMinutes*60000);
+      var hh = etaDate.getHours(), mm = etaDate.getMinutes();
+      sbEta.textContent = (hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
     }
   }
 
@@ -2123,6 +2229,7 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
       gpsNote.textContent = '';
       navBanner.style.display = 'none';
       resetMapHeading();
+      if(document.body.classList.contains('satnav-mode') && typeof endSatnav==='function') endSatnav();
       if(watchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     }
   });
@@ -2205,10 +2312,54 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
     }
     setTimeout(function(){ map.invalidateSize(); }, 120);
   }
-  fsFab.addEventListener('click', function(){ setFullscreen(!document.body.classList.contains('fs-mode')); });
-  fsExit.addEventListener('click', function(){ setFullscreen(false); });
+  fsFab.addEventListener('click', function(){
+    if(document.body.classList.contains('satnav-mode')){ endSatnav(); return; }
+    setFullscreen(!document.body.classList.contains('fs-mode'));
+  });
+
+  // Sat-Nav mode: one button that turns on everything a sat-nav view needs —
+  // full screen, the 3D tilt, heading-based spin (which kicks in automatically
+  // once tracking starts, per the spin logic above), and swaps the small
+  // turn/stop cards for the big top instruction bar + bottom ETA bar.
+  var satnavBtn = document.getElementById('satnavBtn');
+  function setTilt(on){
+    var el = document.getElementById('map');
+    if(el.classList.contains('tilt-3d') === on) return;
+    el.classList.toggle('tilt-3d', on);
+    document.getElementById('tiltFab').classList.toggle('active', on);
+    applyMapTransform();
+  }
+  function startSatnav(){
+    document.body.classList.add('satnav-mode');
+    satnavBtn.classList.add('on');
+    satnavBtn.textContent = '✕  End Sat-Nav mode';
+    fsExit.textContent = '✕ End Sat-Nav';
+    setFullscreen(true);
+    setTilt(true);
+    if(!tracking) trackBtn.click();
+    if(activeId && routes[activeId]) updateNavBanner(routes[activeId], lastFix ? lastFix.latlng : (map.getCenter?[map.getCenter().lat,map.getCenter().lng]:[0,0]));
+  }
+  function endSatnav(){
+    document.body.classList.remove('satnav-mode');
+    satnavBtn.classList.remove('on');
+    satnavBtn.textContent = '🛰️  Start Sat-Nav mode';
+    fsExit.textContent = '✕ Exit full screen';
+    setFullscreen(false);
+    setTilt(false);
+    satnavTop.style.display = 'none';
+    satnavThen.style.display = 'none';
+    document.getElementById('satnavBottom').style.display = 'none';
+  }
+  satnavBtn.addEventListener('click', function(){
+    if(document.body.classList.contains('satnav-mode')) endSatnav(); else startSatnav();
+  });
+  fsExit.addEventListener('click', function(){
+    if(document.body.classList.contains('satnav-mode')) endSatnav(); else setFullscreen(false);
+  });
   document.addEventListener('fullscreenchange', function(){
-    if(!document.fullscreenElement && document.body.classList.contains('fs-mode')) setFullscreen(false);
+    if(document.fullscreenElement) return;
+    if(document.body.classList.contains('satnav-mode')) endSatnav();
+    else if(document.body.classList.contains('fs-mode')) setFullscreen(false);
   });
 
   document.getElementById('locateFab').addEventListener('click', function(){
