@@ -855,6 +855,33 @@ body{
 .map-fab:active{ transform:scale(.94); }
 .map-fab.tilt-fab{ bottom:66px; font-size:16px; font-weight:700; }
 .map-fab.tilt-fab.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+#fsFab{ bottom:118px; }
+
+.compass-badge{
+  position:absolute; left:12px; bottom:14px; z-index:410;
+  width:32px; height:32px; border-radius:50%;
+  background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  font-family:"Big Shoulders Display", sans-serif; font-weight:700; font-size:11px; color:var(--text);
+  line-height:1; pointer-events:none;
+}
+.compass-badge .tick{ font-size:9px; color:var(--accent); margin-top:-1px; }
+
+.fs-exit{
+  position:absolute; top:10px; right:10px; z-index:470;
+  background:var(--surface); border:1px solid var(--line); border-radius:11px;
+  padding:9px 14px; font-family:"IBM Plex Sans", sans-serif; font-size:12.5px; font-weight:600;
+  color:var(--text); box-shadow:var(--shadow); cursor:pointer;
+}
+
+/* ---------- Full-screen map mode ---------- */
+body.fs-mode .topbar{ display:none; }
+body.fs-mode .tabs{ display:none; }
+body.fs-mode #scheduleView{ display:none !important; }
+body.fs-mode #mapView{ flex:1 1 100% !important; border-right:none; }
+body.fs-mode .panel{ display:none; }
+body.fs-mode .fs-exit{ display:block !important; }
+body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
 
 /* ---------- Turn-by-turn nav banner ---------- */
 .nav-banner{
@@ -1043,8 +1070,11 @@ body{
       <div class="txt"><div class="lbl">NEXT STOP</div><div class="val" id="navStopDist">–</div></div>
     </div>
   </div>
+  <div class="compass-badge" aria-label="Map is fixed north-up">N<span class="tick">▲</span></div>
   <button class="map-fab tilt-fab" id="tiltFab" aria-label="Toggle 3D view">3D</button>
+  <button class="map-fab" id="fsFab" aria-label="Full screen map">⛶</button>
   <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
+  <button class="fs-exit" id="fsExit" style="display:none;">✕ Exit full screen</button>
   <div class="empty-state" id="emptyState">
     <div class="glyph">🧭</div>
     <h2>No routes yet</h2>
@@ -1746,9 +1776,28 @@ body{
   // can't reach out — which is expected inside Claude's own sandbox, same
   // restriction that blocks map tiles there — it falls back to a straight-line
   // distance/bearing guide instead, computed entirely from the GPX data.
+  var COACH_MAX_MPH = 62;
+  var COACH_MAX_MPS = COACH_MAX_MPH * 0.44704;
+
+  // OSRM estimates time assuming a car. We keep its road distance/geometry
+  // (still the best guess at the actual path) but recompute the time using
+  // each step's own implied speed, capped at the coach's max — so a
+  // motorway-fast car estimate doesn't understate a coach's real trip time.
+  function coachDurationFromSteps(steps, fallbackDuration){
+    if(!steps || !steps.length) return fallbackDuration;
+    var total = 0;
+    steps.forEach(function(s){
+      var d = s.distance||0, t = s.duration||0;
+      var carMps = t>0 ? d/t : 0;
+      var mps = carMps>0 ? Math.min(carMps, COACH_MAX_MPS) : COACH_MAX_MPS;
+      total += mps>0 ? d/mps : 0;
+    });
+    return total || fallbackDuration;
+  }
+
   function fetchOsrmRoute(origin, dest){
     var url = 'https://router.project-osrm.org/route/v1/driving/'+
-      origin[1]+','+origin[0]+';'+dest[1]+','+dest[0]+'?overview=full&geometries=geojson';
+      origin[1]+','+origin[0]+';'+dest[1]+','+dest[0]+'?overview=full&geometries=geojson&steps=true';
     var controller = (typeof AbortController!=='undefined') ? new AbortController() : null;
     var t = controller ? setTimeout(function(){ controller.abort(); }, 6000) : null;
     return fetch(url, controller ? { signal: controller.signal } : {})
@@ -1761,7 +1810,9 @@ body{
         if(!data || data.code!=='Ok' || !data.routes || !data.routes.length) return null;
         var route = data.routes[0];
         var coords = route.geometry.coordinates.map(function(c){ return [c[1], c[0]]; });
-        return { coords:coords, distance:route.distance, duration:route.duration };
+        var steps = (route.legs && route.legs[0] && route.legs[0].steps) || [];
+        var coachDuration = coachDurationFromSteps(steps, route.duration);
+        return { coords:coords, distance:route.distance, duration:coachDuration, carDuration:route.duration };
       })
       .catch(function(){ if(t) clearTimeout(t); return null; });
   }
@@ -1800,7 +1851,7 @@ body{
         if(res){
           guideLine = L.polyline(res.coords, { color:getCss('--stop'), weight:5, opacity:.9, dashArray:'1,10', lineCap:'round' }).addTo(map);
           var fd = fmtDist(res.distance);
-          guideNote.textContent = 'To Stop 1: '+fd.v+fd.u+' · about '+fmtDuration(res.duration)+' by road.';
+          guideNote.textContent = 'To Stop 1: '+fd.v+fd.u+' · about '+fmtDuration(res.duration)+' by road (coach pace, max '+COACH_MAX_MPH+' mph).';
         } else {
           var d = haversineMeters(origin, target);
           guideLine = L.polyline([origin, target], { color:getCss('--stop'), weight:4, opacity:.85, dashArray:'2,10' }).addTo(map);
@@ -1998,6 +2049,36 @@ body{
       else{ map.dragging.enable(); map.scrollWheelZoom.enable(); map.doubleClickZoom.enable(); if(map.tap) map.tap.enable(); }
     }catch(e){}
     setTimeout(function(){ map.invalidateSize(); }, 380);
+  });
+
+  // Full-screen map: hides the top bar / tabs / bottom panel so the map
+  // fills the screen. Also tries the browser's native Fullscreen API (hides
+  // the browser chrome too) where the platform supports it — iOS Safari
+  // generally doesn't, so this quietly no-ops there and the CSS-only
+  // full-bleed layout still does the main job everywhere.
+  var fsFab = document.getElementById('fsFab');
+  var fsExit = document.getElementById('fsExit');
+  function setFullscreen(on){
+    document.body.classList.toggle('fs-mode', on);
+    fsFab.classList.toggle('active', on);
+    if(on){
+      try{
+        var el = document.documentElement;
+        if(el.requestFullscreen) el.requestFullscreen().catch(function(){});
+        else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }catch(e){}
+    } else {
+      try{
+        if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){});
+        else if(document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }catch(e){}
+    }
+    setTimeout(function(){ map.invalidateSize(); }, 120);
+  }
+  fsFab.addEventListener('click', function(){ setFullscreen(!document.body.classList.contains('fs-mode')); });
+  fsExit.addEventListener('click', function(){ setFullscreen(false); });
+  document.addEventListener('fullscreenchange', function(){
+    if(!document.fullscreenElement && document.body.classList.contains('fs-mode')) setFullscreen(false);
   });
 
   document.getElementById('locateFab').addEventListener('click', function(){
