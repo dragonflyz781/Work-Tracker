@@ -789,15 +789,28 @@ body{
 .sched-pax-btn.off{ color:var(--danger); }
 .sched-pax-label{ font-size:11px; color:var(--muted); margin-right:2px; }
 
-/* ---------- Map ---------- */
-.map-wrap{ position:relative; flex:1 1 auto; min-height:0; perspective:1000px; }
+/* ---------- Map ----------
+   Tilt (pitch, rotateX) and spin (compass heading, a flat Z rotation) are
+   two different kinds of rotation and need two different pivot points to
+   compose correctly — tilt pivots from near the bottom edge (like tipping
+   a camera down), spin pivots from dead centre (like a compass needle).
+   Putting both on one element with one shared origin makes the plane swing
+   off at odd angles and get clipped, which is why they're split into two
+   nested layers here: #mapSpin (outer, centred) handles heading rotation,
+   #map (inner, bottom-anchored) handles the tilt/pitch. */
+.map-wrap{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+#mapSpin{
+  position:absolute; inset:0; perspective:1000px;
+  transform-origin:50% 50%;
+  transition:transform .2s linear;
+}
 #map{
   position:absolute; inset:0; background:var(--surface-2);
   transform-origin:50% 82%;
   transition:transform .35s ease;
 }
-/* #map.tilt-3d transform is now set dynamically in JS (applyMapTransform),
-   so it can include live heading rotation on top of the base tilt. */
+/* #map.tilt-3d (pitch) and #mapSpin (heading) transforms are both set
+   dynamically in JS — see applyMapTransform. */
 .leaflet-container{
   background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
 }
@@ -1132,7 +1145,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 <div id="views">
 <div id="mapView" class="view">
 <div class="map-wrap">
-  <div id="map"></div>
+  <div id="mapSpin"><div id="map"></div></div>
   <div class="nav-banner" id="navBanner" style="display:none;">
     <div class="nav-card">
       <div class="arrow" id="navTurnArrow">→</div>
@@ -2249,12 +2262,10 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   var mapHeadingDeg = 0;
   function applyMapTransform(){
     var el = document.getElementById('map');
+    var spinEl = document.getElementById('mapSpin');
     var tilt = el.classList.contains('tilt-3d');
-    var parts = [];
-    if(tilt) parts.push('rotateX(52deg)');
-    if(mapHeadingDeg) parts.push('rotate('+mapHeadingDeg+'deg)');
-    if(tilt) parts.push('scale(1.65)');
-    el.style.transform = parts.join(' ');
+    el.style.transform = tilt ? 'rotateX(52deg) scale(1.65)' : '';
+    spinEl.style.transform = mapHeadingDeg ? 'rotate('+mapHeadingDeg+'deg)' : '';
     var tick = document.getElementById('compassTick');
     if(tick) tick.style.transform = mapHeadingDeg ? 'rotate('+mapHeadingDeg+'deg)' : '';
     updateInteractionLock();
