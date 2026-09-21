@@ -790,32 +790,24 @@ body{
 .sched-pax-label{ font-size:11px; color:var(--muted); margin-right:2px; }
 
 /* ---------- Map ----------
-   Tilt (pitch, rotateX) and spin (compass heading, a flat Z rotation) are
-   two different kinds of rotation and need two different pivot points to
-   compose correctly — tilt pivots from near the bottom edge (like tipping
-   a camera down), spin pivots from dead centre (like a compass needle).
-   Putting both on one element with one shared origin makes the plane swing
-   off at odd angles and get clipped, which is why they're split into two
-   nested layers here: #mapSpin (outer, centred) handles heading rotation,
-   #map (inner, bottom-anchored) handles the tilt/pitch. */
+   Flat 2D only — no fake-3D tilt. #mapSpin rotates the whole map around
+   its centre to face your direction of travel while tracking; #map itself
+   carries no transform of its own. Clipping is layered three ways
+   (overflow, contain, clip-path) since plain overflow:hidden alone isn't
+   always respected around rotated content on some Android Chrome builds. */
 .map-wrap{
   position:relative; flex:1 1 auto; min-height:0;
   overflow:hidden; contain:paint; clip-path:inset(0);
 }
 #mapSpin{
-  position:absolute; inset:0; perspective:1000px;
+  position:absolute; inset:0;
   transform-origin:50% 50%;
   transition:transform .2s linear;
   overflow:hidden; contain:paint; clip-path:inset(0);
 }
 #map{
   position:absolute; inset:0; background:var(--surface-2);
-  transform-origin:50% 82%;
-  transition:transform .35s ease;
-  overflow:hidden; contain:paint;
 }
-/* #map.tilt-3d (pitch) and #mapSpin (heading) transforms are both set
-   dynamically in JS — see applyMapTransform. */
 .leaflet-container{
   background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
 }
@@ -872,9 +864,7 @@ body{
   display:flex; align-items:center; justify-content:center; font-size:19px; cursor:pointer;
 }
 .map-fab:active{ transform:scale(.94); }
-.map-fab.tilt-fab{ bottom:66px; font-size:16px; font-weight:700; }
-.map-fab.tilt-fab.active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
-#fsFab{ bottom:118px; }
+#fsFab{ bottom:66px; }
 
 .compass-badge{
   position:absolute; left:12px; bottom:14px; z-index:410;
@@ -1178,7 +1168,6 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     <div class="sb-stat"><div class="sb-val" id="sbStop">–</div><div class="sb-lbl">NEXT STOP</div></div>
   </div>
   <div class="compass-badge" aria-label="Points to true north">N<span class="tick" id="compassTick">▲</span></div>
-  <button class="map-fab tilt-fab" id="tiltFab" aria-label="Toggle 3D view">3D</button>
   <button class="map-fab" id="fsFab" aria-label="Full screen map">⛶</button>
   <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
   <button class="fs-exit" id="fsExit" style="display:none;">✕ Exit full screen</button>
@@ -2254,22 +2243,17 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 
   // Heading-up map: whenever GPS tracking is on and a device heading is
   // available, the map spins to face your direction of travel — on top of
-  // that, 3D view (below) adds a tilt/pitch for a nav-app look, but the
-  // spin itself isn't limited to 3D mode. Two things stay correct no
-  // matter how far the map has turned:
+  // Flat rotation only — no 3D tilt. Two things stay correct no matter how
+  // far the map has turned:
   //  - the live GPS marker is counter-rotated each time, so it always
   //    points true north on screen, never the spun map orientation
   //  - the compass badge's tick swings to keep pointing at true north too
-  // Dragging/scroll-zoom are turned off any time a rotation or tilt is
-  // applied, since screen-space mouse deltas stop lining up with what's
-  // drawn once the map is transformed — the centre-on-me and +/- zoom
-  // buttons keep working normally throughout.
+  // Dragging/scroll-zoom are turned off while rotated, since screen-space
+  // mouse deltas stop lining up with what's drawn once the map is spun —
+  // the centre-on-me and +/- zoom buttons keep working normally throughout.
   var mapHeadingDeg = 0;
   function applyMapTransform(){
-    var el = document.getElementById('map');
     var spinEl = document.getElementById('mapSpin');
-    var tilt = el.classList.contains('tilt-3d');
-    el.style.transform = tilt ? 'rotateX(52deg) scale(1.65)' : '';
     spinEl.style.transform = mapHeadingDeg ? 'rotate('+mapHeadingDeg+'deg)' : '';
     var tick = document.getElementById('compassTick');
     if(tick) tick.style.transform = mapHeadingDeg ? 'rotate('+mapHeadingDeg+'deg)' : '';
@@ -2282,8 +2266,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     if(wrap) wrap.style.transform = mapHeadingDeg ? 'rotate('+(-mapHeadingDeg)+'deg)' : '';
   }
   function updateInteractionLock(){
-    var tilt = document.getElementById('map').classList.contains('tilt-3d');
-    var shouldLock = tilt || !!mapHeadingDeg;
+    var shouldLock = !!mapHeadingDeg;
     try{
       if(shouldLock){ map.dragging.disable(); map.scrollWheelZoom.disable(); map.doubleClickZoom.disable(); if(map.tap) map.tap.disable(); }
       else{ map.dragging.enable(); map.scrollWheelZoom.enable(); map.doubleClickZoom.enable(); if(map.tap) map.tap.enable(); }
@@ -2295,14 +2278,6 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     applyMapTransform();
     applyMarkerCounterRotation();
   }
-
-  document.getElementById('tiltFab').addEventListener('click', function(){
-    var el = document.getElementById('map');
-    var on = el.classList.toggle('tilt-3d');
-    this.classList.toggle('active', on);
-    applyMapTransform();
-    setTimeout(function(){ map.invalidateSize(); }, 380);
-  });
 
   // Full-screen map: hides the top bar / tabs / bottom panel so the map
   // fills the screen. Also tries the browser's native Fullscreen API (hides
@@ -2334,24 +2309,17 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   });
 
   // Sat-Nav mode: one button that turns on everything a sat-nav view needs —
-  // full screen, the 3D tilt, heading-based spin (which kicks in automatically
-  // once tracking starts, per the spin logic above), and swaps the small
+  // full screen, heading-based spin (which kicks in automatically once
+  // tracking starts, per the spin logic above), and swaps the small
   // turn/stop cards for the big top instruction bar + bottom ETA bar.
+  // Flat 2D throughout — no 3D tilt.
   var satnavBtn = document.getElementById('satnavBtn');
-  function setTilt(on){
-    var el = document.getElementById('map');
-    if(el.classList.contains('tilt-3d') === on) return;
-    el.classList.toggle('tilt-3d', on);
-    document.getElementById('tiltFab').classList.toggle('active', on);
-    applyMapTransform();
-  }
   function startSatnav(){
     document.body.classList.add('satnav-mode');
     satnavBtn.classList.add('on');
     satnavBtn.textContent = '✕  End Sat-Nav mode';
     fsExit.textContent = '✕ End Sat-Nav';
     setFullscreen(true);
-    setTilt(true);
     if(!tracking) trackBtn.click();
     if(activeId && routes[activeId]) updateNavBanner(routes[activeId], lastFix ? lastFix.latlng : (map.getCenter?[map.getCenter().lat,map.getCenter().lng]:[0,0]));
   }
@@ -2361,7 +2329,6 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     satnavBtn.textContent = '🛰️  Start Sat-Nav mode';
     fsExit.textContent = '✕ Exit full screen';
     setFullscreen(false);
-    setTilt(false);
     satnavTop.style.display = 'none';
     satnavThen.style.display = 'none';
     document.getElementById('satnavBottom').style.display = 'none';
