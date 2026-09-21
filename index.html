@@ -1360,6 +1360,30 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 
   /* ---------------- Geometry helpers ---------------- */
   function toRad(d){ return d*Math.PI/180; }
+  // Sat-nav-style follow camera: keeps your position anchored toward the
+  // bottom of the screen (not dead centre) so more of the road ahead is
+  // visible. Has to account for the map's current CSS rotation (mapHeadingDeg)
+  // since Leaflet itself always thinks in un-rotated pixel space — the actual
+  // point we ask Leaflet to centre on is the rotation-corrected equivalent
+  // of "bottom-centre of the screen".
+  var FOLLOW_ANCHOR_Y = 0.74; // fraction down the visible map, 0=top 1=bottom
+  function rotatePointAround(pt, center, angleDeg){
+    var rad = angleDeg*Math.PI/180, cos = Math.cos(rad), sin = Math.sin(rad);
+    var dx = pt.x-center.x, dy = pt.y-center.y;
+    return L.point(center.x + dx*cos - dy*sin, center.y + dx*sin + dy*cos);
+  }
+  function panKeepingBottom(latlng){
+    if(!map._loaded){ map.panTo(latlng, { animate:true }); return; }
+    var size = map.getSize();
+    var center = L.point(size.x/2, size.y/2);
+    var desiredScreen = L.point(size.x/2, size.y*FOLLOW_ANCHOR_Y);
+    var desiredMapSpace = mapHeadingDeg ? rotatePointAround(desiredScreen, center, -mapHeadingDeg) : desiredScreen;
+    var targetPoint = map.project(latlng, map.getZoom());
+    var offset = desiredMapSpace.subtract(center);
+    var newCenter = map.unproject(targetPoint.subtract(offset), map.getZoom());
+    map.panTo(newCenter, { animate:true });
+  }
+
   function haversineMeters(a,b){
     var R=6371000, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
     var s = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
@@ -2073,13 +2097,13 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       liveMarker.setLatLng(latlng);
     }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
-    if(followMe) map.panTo(latlng, { animate:true });
 
     if(tracking && c.heading!=null && !isNaN(c.heading)){
       mapHeadingDeg = -c.heading;
       applyMapTransform();
     }
     applyMarkerCounterRotation();
+    if(followMe) panKeepingBottom(latlng);
 
     var mph = null;
     if(c.speed!==null && c.speed!==undefined && !isNaN(c.speed)){
@@ -2347,7 +2371,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 
   document.getElementById('locateFab').addEventListener('click', function(){
     followMe = true;
-    if(liveMarker) map.panTo(liveMarker.getLatLng(), { animate:true });
+    if(liveMarker) panKeepingBottom(liveMarker.getLatLng());
     else if(!tracking) trackBtn.click();
   });
   map.on('dragstart', function(){ followMe = false; });
