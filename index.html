@@ -796,7 +796,8 @@ body{
   transform-origin:50% 82%;
   transition:transform .35s ease;
 }
-#map.tilt-3d{ transform:rotateX(52deg) scale(1.65); }
+/* #map.tilt-3d transform is now set dynamically in JS (applyMapTransform),
+   so it can include live heading rotation on top of the base tilt. */
 .leaflet-container{
   background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
 }
@@ -2005,6 +2006,12 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
     if(followMe) map.panTo(latlng, { animate:true });
 
+    if(document.getElementById('map').classList.contains('tilt-3d') && c.heading!=null && !isNaN(c.heading)){
+      mapHeadingDeg = -c.heading;
+      applyMapTransform();
+    }
+    applyMarkerCounterRotation();
+
     var mph = null;
     if(c.speed!==null && c.speed!==undefined && !isNaN(c.speed)){
       mph = c.speed*2.23694;
@@ -2123,10 +2130,34 @@ body.fs-mode .fs-pax-wrap{ display:flex !important; }
   // Dragging/scroll-zoom are turned off while tilted since screen-space mouse
   // deltas no longer line up with the visually-skewed map; the centre-on-me
   // and +/- zoom controls keep working normally.
+  //
+  // While in this view AND actively GPS-tracking, the map is also free to
+  // spin to face your direction of travel (heading-up), like a nav app. The
+  // live GPS marker itself is counter-rotated by the same amount every time,
+  // so it always stays pointing true north on screen regardless of how far
+  // the map has spun underneath it.
+  var mapHeadingDeg = 0;
+  function applyMapTransform(){
+    var el = document.getElementById('map');
+    if(el.classList.contains('tilt-3d')){
+      el.style.transform = 'rotateX(52deg) rotate('+mapHeadingDeg+'deg) scale(1.65)';
+    } else {
+      el.style.transform = '';
+    }
+  }
+  function applyMarkerCounterRotation(){
+    if(!liveMarker || !liveMarker.getElement) return;
+    var iconEl = liveMarker.getElement();
+    var wrap = iconEl && iconEl.querySelector('.live-dot-wrap');
+    if(wrap) wrap.style.transform = 'rotate('+(-mapHeadingDeg)+'deg)';
+  }
+
   document.getElementById('tiltFab').addEventListener('click', function(){
     var el = document.getElementById('map');
     var on = el.classList.toggle('tilt-3d');
     this.classList.toggle('active', on);
+    if(!on){ mapHeadingDeg = 0; applyMarkerCounterRotation(); }
+    applyMapTransform();
     try{
       if(on){ map.dragging.disable(); map.scrollWheelZoom.disable(); map.doubleClickZoom.disable(); if(map.tap) map.tap.disable(); }
       else{ map.dragging.enable(); map.scrollWheelZoom.enable(); map.doubleClickZoom.enable(); if(map.tap) map.tap.enable(); }
