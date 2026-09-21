@@ -806,7 +806,13 @@ body{
   overflow:hidden; contain:paint; clip-path:inset(0);
 }
 #map{
-  position:absolute; inset:0; background:var(--surface-2);
+  /* Sized to 150%/centred at -25% so it still fully covers the screen when
+     #mapSpin rotates it — a rotated square exposes its own container's
+     corners unless the rotated content overscans by ~1.41x (worst case,
+     45°). The follow-camera math (panKeepingBottom) accounts for this
+     oversize when working out where to point the camera. */
+  position:absolute; top:-25%; left:-25%; width:150%; height:150%;
+  background:var(--surface-2);
 }
 .leaflet-container{
   background:var(--surface-2); font-family:"IBM Plex Sans", sans-serif;
@@ -865,6 +871,17 @@ body{
 }
 .map-fab:active{ transform:scale(.94); }
 #fsFab{ bottom:66px; }
+
+.zoom-cluster{
+  position:absolute; left:12px; bottom:56px; z-index:410;
+  display:flex; flex-direction:column; border-radius:12px; overflow:hidden;
+  border:1px solid var(--line); box-shadow:var(--shadow);
+}
+.zoom-btn{
+  position:static; width:38px; height:38px; border-radius:0;
+  border:none; border-bottom:1px solid var(--line); font-size:20px; font-weight:600;
+}
+.zoom-btn:last-child{ border-bottom:none; }
 
 .compass-badge{
   position:absolute; left:12px; bottom:14px; z-index:410;
@@ -1168,6 +1185,10 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     <div class="sb-stat"><div class="sb-val" id="sbStop">–</div><div class="sb-lbl">NEXT STOP</div></div>
   </div>
   <div class="compass-badge" aria-label="Points to true north">N<span class="tick" id="compassTick">▲</span></div>
+  <div class="zoom-cluster">
+    <button class="map-fab zoom-btn" id="zoomInFab" aria-label="Zoom in">+</button>
+    <button class="map-fab zoom-btn" id="zoomOutFab" aria-label="Zoom out">−</button>
+  </div>
   <button class="map-fab" id="fsFab" aria-label="Full screen map">⛶</button>
   <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
   <button class="fs-exit" id="fsExit" style="display:none;">✕ Exit full screen</button>
@@ -1297,9 +1318,10 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   // GitHub Pages). Inside Claude's published-artifact sandbox, external
   // image loads are blocked, so we detect that and fall back gracefully
   // to a plain grid + "Open in Maps" links — no separate build needed.
+  // No Leaflet zoom/scale control here — they'd live inside #mapSpin and
+  // rotate (and now sit off-screen) along with the map. Fixed +/- buttons
+  // outside the rotating layer are added further down instead.
   var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([51.5, -0.12], 6);
-  L.control.zoom({ position:'bottomleft' }).addTo(map);
-  L.control.scale({ position:'bottomright', imperial:true, metric:false }).addTo(map);
 
   var tilesConfirmed = false;
   var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1366,7 +1388,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   // since Leaflet itself always thinks in un-rotated pixel space — the actual
   // point we ask Leaflet to centre on is the rotation-corrected equivalent
   // of "bottom-centre of the screen".
-  var FOLLOW_ANCHOR_Y = 0.74; // fraction down the visible map, 0=top 1=bottom
+  var FOLLOW_ANCHOR_Y = 0.74; // fraction down the *visible* screen, 0=top 1=bottom
   function rotatePointAround(pt, center, angleDeg){
     var rad = angleDeg*Math.PI/180, cos = Math.cos(rad), sin = Math.sin(rad);
     var dx = pt.x-center.x, dy = pt.y-center.y;
@@ -1374,12 +1396,24 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   }
   function panKeepingBottom(latlng){
     if(!map._loaded){ map.panTo(latlng, { animate:true }); return; }
-    var size = map.getSize();
-    var center = L.point(size.x/2, size.y/2);
-    var desiredScreen = L.point(size.x/2, size.y*FOLLOW_ANCHOR_Y);
-    var desiredMapSpace = mapHeadingDeg ? rotatePointAround(desiredScreen, center, -mapHeadingDeg) : desiredScreen;
+    // #map is intentionally larger than the visible viewport (see CSS) so
+    // rotation never exposes its corners. That means Leaflet's own notion
+    // of its container size (map.getSize()) is bigger than what's actually
+    // on screen — everything below works in *visible* screen pixels first,
+    // then converts into Leaflet's oversized internal space at the end.
+    var visibleRect = document.querySelector('.map-wrap').getBoundingClientRect();
+    var visibleW = visibleRect.width, visibleH = visibleRect.height;
+    var visibleCenter = L.point(visibleW/2, visibleH/2);
+    var desiredScreen = L.point(visibleW/2, visibleH*FOLLOW_ANCHOR_Y);
+    var desiredLocal = mapHeadingDeg ? rotatePointAround(desiredScreen, visibleCenter, -mapHeadingDeg) : desiredScreen;
+
+    var mapSize = map.getSize();
+    var overscanX = (mapSize.x - visibleW)/2, overscanY = (mapSize.y - visibleH)/2;
+    var desiredLeaflet = L.point(desiredLocal.x + overscanX, desiredLocal.y + overscanY);
+    var leafletCenter = L.point(mapSize.x/2, mapSize.y/2);
+
     var targetPoint = map.project(latlng, map.getZoom());
-    var offset = desiredMapSpace.subtract(center);
+    var offset = desiredLeaflet.subtract(leafletCenter);
     var newCenter = map.unproject(targetPoint.subtract(offset), map.getZoom());
     map.panTo(newCenter, { animate:true });
   }
@@ -2368,6 +2402,9 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     if(document.body.classList.contains('satnav-mode')) endSatnav();
     else if(document.body.classList.contains('fs-mode')) setFullscreen(false);
   });
+
+  document.getElementById('zoomInFab').addEventListener('click', function(){ map.zoomIn(); });
+  document.getElementById('zoomOutFab').addEventListener('click', function(){ map.zoomOut(); });
 
   document.getElementById('locateFab').addEventListener('click', function(){
     followMe = true;
