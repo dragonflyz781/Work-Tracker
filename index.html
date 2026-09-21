@@ -798,16 +798,21 @@ body{
    off at odd angles and get clipped, which is why they're split into two
    nested layers here: #mapSpin (outer, centred) handles heading rotation,
    #map (inner, bottom-anchored) handles the tilt/pitch. */
-.map-wrap{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+.map-wrap{
+  position:relative; flex:1 1 auto; min-height:0;
+  overflow:hidden; contain:paint; clip-path:inset(0);
+}
 #mapSpin{
   position:absolute; inset:0; perspective:1000px;
   transform-origin:50% 50%;
   transition:transform .2s linear;
+  overflow:hidden; contain:paint; clip-path:inset(0);
 }
 #map{
   position:absolute; inset:0; background:var(--surface-2);
   transform-origin:50% 82%;
   transition:transform .35s ease;
+  overflow:hidden; contain:paint;
 }
 /* #map.tilt-3d (pitch) and #mapSpin (heading) transforms are both set
    dynamically in JS — see applyMapTransform. */
