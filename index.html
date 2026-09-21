@@ -1243,11 +1243,14 @@ body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
   function stopIcon(n){
     return L.divIcon({ className:'', html:'<div class="stop-marker"><span>'+n+'</span></div>', iconSize:[24,24], iconAnchor:[12,12] });
   }
-  function liveIcon(heading){
-    var wedge = (heading===null||heading===undefined||isNaN(heading)) ? '' :
-      '<div class="heading-wedge" style="transform:rotate('+heading+'deg)"></div>';
-    return L.divIcon({ className:'', html:'<div class="live-dot-wrap">'+wedge+'<div class="live-dot"></div></div>', iconSize:[26,26], iconAnchor:[13,13] });
-  }
+  // The wedge stays fixed pointing north (no rotation), same as the map
+  // itself — it's a location marker, not a compass needle.
+  var LIVE_ICON = L.divIcon({
+    className:'',
+    html:'<div class="live-dot-wrap"><div class="heading-wedge"></div><div class="live-dot"></div></div>',
+    iconSize:[26,26], iconAnchor:[13,13]
+  });
+  function liveIcon(){ return LIVE_ICON; }
 
   /* ---------------- Geometry helpers ---------------- */
   function toRad(d){ return d*Math.PI/180; }
@@ -1920,11 +1923,10 @@ body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
     var latlng = [c.latitude, c.longitude];
 
     if(!liveMarker){
-      liveMarker = L.marker(latlng, { icon: liveIcon(c.heading), zIndexOffset:1000 }).addTo(map);
+      liveMarker = L.marker(latlng, { icon: liveIcon(), zIndexOffset:1000 }).addTo(map);
       liveMarker.bindPopup('');
     } else {
       liveMarker.setLatLng(latlng);
-      liveMarker.setIcon(liveIcon(c.heading));
     }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
     if(followMe) map.panTo(latlng, { animate:true });
