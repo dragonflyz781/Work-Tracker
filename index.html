@@ -806,11 +806,10 @@ body{
   overflow:hidden; contain:paint; clip-path:inset(0);
 }
 #map{
-  /* Sized to 150%/centred at -25% so it still fully covers the screen when
-     #mapSpin rotates it — a rotated square exposes its own container's
-     corners unless the rotated content overscans by ~1.41x (worst case,
-     45°). The follow-camera math (panKeepingBottom) accounts for this
-     oversize when working out where to point the camera. */
+  /* Size/position set in JS (sizeMapOverscan) to a square matching the
+     viewport's own diagonal, centred — see the comment there for why a
+     flat percentage isn't enough on a tall phone screen. Starting values
+     here just avoid a zero-size flash before JS runs. */
   position:absolute; top:-25%; left:-25%; width:150%; height:150%;
   background:var(--surface-2);
 }
@@ -1354,7 +1353,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   }
   // Give tiles a few seconds to prove themselves before assuming they're blocked.
   setTimeout(function(){ if(!tilesConfirmed) showNoTilesBanner(); }, 3500);
-  setTimeout(function(){ map.invalidateSize(); }, 150);
+  setTimeout(function(){ sizeMapOverscan(); }, 150);
 
   function mapsLink(lat, lng){
     return 'https://www.google.com/maps/search/?api=1&query='+lat+','+lng;
@@ -1842,7 +1841,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     } else {
       scheduleView.style.display = 'none'; mapView.style.display = 'flex';
       tabMapBtn.classList.add('active'); tabSchedBtn.classList.remove('active');
-      setTimeout(function(){ map.invalidateSize(); }, 0);
+      setTimeout(function(){ sizeMapOverscan(); }, 0);
     }
   }
   tabMapBtn.addEventListener('click', function(){ showTab('map'); });
@@ -2309,6 +2308,33 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   // Dragging/scroll-zoom are turned off while rotated, since screen-space
   // mouse deltas stop lining up with what's drawn once the map is spun —
   // the centre-on-me and +/- zoom buttons keep working normally throughout.
+  // A rotated square's INSCRIBED circle has radius = side/2, unaffected by
+  // rotation angle. So if #map is a square whose side is at least the
+  // *diagonal* of the visible viewport, that inscribed circle always fully
+  // contains the viewport rectangle (whose farthest points — its corners —
+  // sit exactly at half that diagonal from centre), at any rotation angle,
+  // on any aspect ratio. A flat percentage (e.g. 150%) doesn't guarantee
+  // this on a phone screen, where height is much larger than width — the
+  // diagonal is proportionally far longer than either side alone.
+  function sizeMapOverscan(){
+    var wrap = document.querySelector('.map-wrap');
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    if(!w || !h) return;
+    var side = Math.ceil(Math.sqrt(w*w + h*h) * 1.06); // +6% safety margin
+    var el = document.getElementById('map');
+    el.style.width = side+'px';
+    el.style.height = side+'px';
+    el.style.left = Math.round((w-side)/2)+'px';
+    el.style.top = Math.round((h-side)/2)+'px';
+    if(map && map._loaded) map.invalidateSize();
+  }
+
+  var overscanResizeTimer = null;
+  window.addEventListener('resize', function(){
+    clearTimeout(overscanResizeTimer);
+    overscanResizeTimer = setTimeout(sizeMapOverscan, 150);
+  });
+
   var mapHeadingDeg = 0;
   function applyMapTransform(){
     var spinEl = document.getElementById('mapSpin');
@@ -2359,7 +2385,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
         else if(document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
       }catch(e){}
     }
-    setTimeout(function(){ map.invalidateSize(); }, 120);
+    setTimeout(function(){ sizeMapOverscan(); }, 120);
   }
   fsFab.addEventListener('click', function(){
     if(document.body.classList.contains('satnav-mode')){ endSatnav(); return; }
