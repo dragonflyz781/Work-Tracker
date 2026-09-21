@@ -2396,7 +2396,13 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
         else if(document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
       }catch(e){}
     }
-    setTimeout(function(){ sizeMapOverscan(); }, 120);
+    // The real Fullscreen API transition can take longer than a single
+    // short timeout to actually finish resizing the viewport — sizing the
+    // overscan square too early (against the old, smaller size) leaves a
+    // gap once the transition catches up. Retry a few times cheaply rather
+    // than guess one "safe" delay; fullscreenchange (below) also triggers
+    // this the moment the transition genuinely completes.
+    [120, 350, 700].forEach(function(ms){ setTimeout(sizeMapOverscan, ms); });
   }
   fsFab.addEventListener('click', function(){
     if(document.body.classList.contains('satnav-mode')){ endSatnav(); return; }
@@ -2435,6 +2441,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     if(document.body.classList.contains('satnav-mode')) endSatnav(); else setFullscreen(false);
   });
   document.addEventListener('fullscreenchange', function(){
+    setTimeout(sizeMapOverscan, 30);
     if(document.fullscreenElement) return;
     if(document.body.classList.contains('satnav-mode')) endSatnav();
     else if(document.body.classList.contains('fs-mode')) setFullscreen(false);
