@@ -882,6 +882,27 @@ body.fs-mode #mapView{ flex:1 1 100% !important; border-right:none; }
 body.fs-mode .panel{ display:none; }
 body.fs-mode .fs-exit{ display:block !important; }
 body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
+body.fs-mode .fs-pax{ display:flex !important; }
+
+.fs-pax{
+  display:none; position:absolute; left:50%; bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  transform:translateX(-50%); z-index:470;
+  align-items:center; gap:0; background:var(--surface); border:1px solid var(--line);
+  border-radius:999px; box-shadow:var(--shadow); overflow:hidden;
+}
+.fs-pax-btn{
+  border:none; background:transparent; color:var(--text);
+  font-family:"IBM Plex Sans", sans-serif; font-weight:700; font-size:14px;
+  padding:13px 18px; cursor:pointer; white-space:nowrap;
+}
+.fs-pax-btn.on{ color:var(--route); }
+.fs-pax-btn.off{ color:var(--danger); }
+.fs-pax-btn:active{ background:var(--surface-2); }
+.fs-pax-count{
+  font-family:"Big Shoulders Display", sans-serif; font-weight:700; font-size:19px;
+  padding:0 12px; border-left:1px solid var(--line); border-right:1px solid var(--line);
+  min-width:16px; text-align:center;
+}
 
 /* ---------- Turn-by-turn nav banner ---------- */
 .nav-banner{
@@ -1075,6 +1096,11 @@ body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
   <button class="map-fab" id="fsFab" aria-label="Full screen map">⛶</button>
   <button class="map-fab" id="locateFab" aria-label="Centre on me">◎</button>
   <button class="fs-exit" id="fsExit" style="display:none;">✕ Exit full screen</button>
+  <div class="fs-pax" id="fsPax">
+    <button class="fs-pax-btn off" id="fsPaxOff" aria-label="Passenger got off">− Alight</button>
+    <div class="fs-pax-count" id="fsPaxCount">0</div>
+    <button class="fs-pax-btn on" id="fsPaxOn" aria-label="Passenger got on">+ Board</button>
+  </div>
   <div class="empty-state" id="emptyState">
     <div class="glyph">🧭</div>
     <h2>No routes yet</h2>
@@ -1410,6 +1436,8 @@ body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
     var total = paxTotal();
     var elMap = document.getElementById('paxCountMap');
     if(elMap) elMap.textContent = total;
+    var elFs = document.getElementById('fsPaxCount');
+    if(elFs) elFs.textContent = total;
     document.querySelectorAll('.sched-pax .n').forEach(function(el){
       el.textContent = pax.byStop[el.getAttribute('data-stop-idx')] || 0;
     });
@@ -1439,6 +1467,8 @@ body.fs-mode .map-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
       else if(action==='reset') paxReset();
     });
   });
+  document.getElementById('fsPaxOn').addEventListener('click', function(){ paxAdjust(1); });
+  document.getElementById('fsPaxOff').addEventListener('click', function(){ paxAdjust(-1); });
 
   function renderEmptyState(){
     document.getElementById('emptyState').style.display = Object.keys(routes).length ? 'none' : 'flex';
