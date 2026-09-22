@@ -2118,8 +2118,20 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
     if(followMe) map.panTo(displayLatLng, { animate:true, duration:0.6, easeLinearity:0.4 });
 
-    if(tracking && c.heading!=null && !isNaN(c.heading)){
-      map.setBearing(smoothHeadingDeg(c.heading));
+    // The device's own coords.heading is very often null in practice —
+    // many phones only populate it above a speed threshold, some browsers
+    // never provide it via watchPosition at all. Falling back to the
+    // bearing between this fix and the last one (once you've moved far
+    // enough for that to be meaningful, not just GPS jitter) is what makes
+    // rotation actually work in the real world rather than only in ideal
+    // conditions.
+    var heading = (c.heading!=null && !isNaN(c.heading)) ? c.heading : null;
+    if(heading==null && lastFix){
+      var movedForHeading = haversineMeters(lastFix.latlng, latlng);
+      if(movedForHeading > 3) heading = bearing(lastFix.latlng, latlng);
+    }
+    if(tracking && heading!=null){
+      map.setBearing(smoothHeadingDeg(heading));
     }
 
     var mph = null;
