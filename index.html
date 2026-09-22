@@ -823,6 +823,7 @@ body{
   font-size:12px; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.3);
 }
 .stop-marker.done{ opacity:.45; }
+.leaflet-marker-icon.live-marker-icon{ transition: transform 0.6s linear; }
 .live-dot-wrap{ width:26px; height:26px; }
 .live-dot{
   width:16px; height:16px; border-radius:50%;
@@ -1163,7 +1164,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     <div class="sb-stat"><div class="sb-val" id="sbSpeed">–</div><div class="sb-lbl">MPH</div></div>
     <div class="sb-stat"><div class="sb-val" id="sbStop">–</div><div class="sb-lbl">NEXT STOP</div></div>
   </div>
-  <div class="compass-badge" aria-label="Map is fixed north-up">N<span class="tick">▲</span></div>
+  <div class="compass-badge" aria-label="Points to true north">N<span class="tick" id="compassTick">▲</span></div>
   <div class="zoom-cluster">
     <button class="map-fab zoom-btn" id="zoomInFab" aria-label="Zoom in">+</button>
     <button class="map-fab zoom-btn" id="zoomOutFab" aria-label="Zoom out">−</button>
@@ -1245,6 +1246,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
 <script>
 (function(){
   "use strict";
@@ -1299,7 +1301,22 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   // to a plain grid + "Open in Maps" links — no separate build needed.
   // Zoom control is a custom fixed +/- button pair (added further down)
   // instead of Leaflet's own, to match the app's styling.
-  var map = L.map('map', { zoomControl:false, attributionControl:false }).setView([51.5, -0.12], 6);
+  // rotate:true (from the leaflet-rotate plugin) turns on real heading-up
+  // rotation, handled correctly inside Leaflet itself — it works out how
+  // many tiles are needed to cover a rotated view and keeps dragging/zoom
+  // working throughout, rather than the manual CSS-transform + overscan
+  // approach this app used before (which is what caused all the clipping
+  // and mis-sizing bugs). Markers default to staying upright regardless of
+  // map rotation (rotateWithView:false), which is exactly what's wanted
+  // for the live GPS dot.
+  var map = L.map('map', {
+    zoomControl:false, attributionControl:false,
+    rotate:true, rotateControl:false, touchRotate:false, shiftKeyRotate:false
+  }).setView([51.5, -0.12], 6);
+  map.on('rotate', function(){
+    var tick = document.getElementById('compassTick');
+    if(tick) tick.style.transform = 'rotate('+map.getBearing()+'deg)';
+  });
 
   var tilesConfirmed = false;
   var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1349,10 +1366,12 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   function stopIcon(n){
     return L.divIcon({ className:'', html:'<div class="stop-marker"><span>'+n+'</span></div>', iconSize:[24,24], iconAnchor:[12,12] });
   }
-  // The wedge stays fixed pointing north (no rotation), same as the map
-  // itself — it's a location marker, not a compass needle.
+  // Markers default to staying upright regardless of map rotation
+  // (rotateWithView:false, from the plugin), so this wedge always points
+  // toward the top of the screen — which, since the map rotates to face
+  // your direction of travel, means it's naturally always pointing "ahead".
   var LIVE_ICON = L.divIcon({
-    className:'',
+    className:'live-marker-icon',
     html:'<div class="live-dot-wrap"><div class="heading-wedge"></div><div class="live-dot"></div></div>',
     iconSize:[26,26], iconAnchor:[13,13]
   });
@@ -1360,20 +1379,6 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 
   /* ---------------- Geometry helpers ---------------- */
   function toRad(d){ return d*Math.PI/180; }
-  // Sat-nav-style follow camera: keeps your position anchored toward the
-  // bottom of the screen (not dead centre) so more of the road ahead is
-  // visible, rather than what's behind you.
-  var FOLLOW_ANCHOR_Y = 0.74; // fraction down the screen, 0=top 1=bottom
-  function panKeepingBottom(latlng){
-    if(!map._loaded){ map.panTo(latlng, { animate:true }); return; }
-    var size = map.getSize();
-    var desired = L.point(size.x/2, size.y*FOLLOW_ANCHOR_Y);
-    var center = L.point(size.x/2, size.y/2);
-    var targetPoint = map.project(latlng, map.getZoom());
-    var offset = desired.subtract(center);
-    var newCenter = map.unproject(targetPoint.subtract(offset), map.getZoom());
-    map.panTo(newCenter, { animate:true });
-  }
 
   function haversineMeters(a,b){
     var R=6371000, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
@@ -2077,18 +2082,45 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   var statStop = document.getElementById('statStop');
   var statStopDist = document.getElementById('statStopDist');
 
+  // Smoothing for the *visual* marker/camera/bearing only — raw GPS fixes
+  // are noisy enough on their own to make the marker and rotation feel
+  // jumpy even when driving in a straight line. Every distance/off-route/
+  // turn/stop calculation below still uses the real, unsmoothed fix — only
+  // where something moves on screen does the smoothed value get used.
+  var smoothLatLng = null, smoothHeading = null;
+  var SMOOTH_POS = 0.35, SMOOTH_HEADING = 0.30;
+  function smoothPosition(latlng){
+    if(!smoothLatLng){ smoothLatLng = latlng.slice(); return smoothLatLng; }
+    smoothLatLng = [
+      smoothLatLng[0] + SMOOTH_POS*(latlng[0]-smoothLatLng[0]),
+      smoothLatLng[1] + SMOOTH_POS*(latlng[1]-smoothLatLng[1])
+    ];
+    return smoothLatLng;
+  }
+  function smoothHeadingDeg(heading){
+    if(smoothHeading==null){ smoothHeading = heading; return smoothHeading; }
+    var diff = ((heading - smoothHeading + 540) % 360) - 180; // shortest signed turn
+    smoothHeading = (smoothHeading + SMOOTH_HEADING*diff + 360) % 360;
+    return smoothHeading;
+  }
+
   function onPosition(pos){
     var c = pos.coords;
     var latlng = [c.latitude, c.longitude];
+    var displayLatLng = smoothPosition(latlng);
 
     if(!liveMarker){
-      liveMarker = L.marker(latlng, { icon: liveIcon(), zIndexOffset:1000 }).addTo(map);
+      liveMarker = L.marker(displayLatLng, { icon: liveIcon(), zIndexOffset:1000 }).addTo(map);
       liveMarker.bindPopup('');
     } else {
-      liveMarker.setLatLng(latlng);
+      liveMarker.setLatLng(displayLatLng);
     }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
-    if(followMe) panKeepingBottom(latlng);
+    if(followMe) map.panTo(displayLatLng, { animate:true, duration:0.6, easeLinearity:0.4 });
+
+    if(tracking && c.heading!=null && !isNaN(c.heading)){
+      map.setBearing(smoothHeadingDeg(c.heading));
+    }
 
     var mph = null;
     if(c.speed!==null && c.speed!==undefined && !isNaN(c.speed)){
@@ -2244,6 +2276,8 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       trackBtn.textContent = '▶  Start GPS tracking';
       gpsNote.textContent = '';
       navBanner.style.display = 'none';
+      map.setBearing(0);
+      smoothLatLng = null; smoothHeading = null;
       if(document.body.classList.contains('satnav-mode') && typeof endSatnav==='function') endSatnav();
       if(watchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     }
@@ -2323,7 +2357,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
 
   document.getElementById('locateFab').addEventListener('click', function(){
     followMe = true;
-    if(liveMarker) panKeepingBottom(liveMarker.getLatLng());
+    if(liveMarker) map.panTo(liveMarker.getLatLng(), { animate:true });
     else if(!tracking) trackBtn.click();
   });
   map.on('dragstart', function(){ followMe = false; });
