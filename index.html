@@ -2131,7 +2131,13 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       liveMarker.setLatLng(displayLatLng);
     }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
-    if(followMe) map.panTo(displayLatLng, { animate:true, duration:0.6, easeLinearity:0.4 });
+    // Instant, not animated — rotation (setBearing, below) is also instant,
+    // and the map's centre is what rotation pivots around. If pan and
+    // rotate ran on different timings, the two would drift apart mid-
+    // animation and the map would visually pivot around the wrong point
+    // for a moment. The marker's own CSS transition (see .live-marker-icon)
+    // is what actually provides the smooth visual motion now.
+    if(followMe) map.setView(displayLatLng, map.getZoom(), { animate:false });
 
     // Heading priority: (1) the road itself — steadiest, since the route's
     // shape doesn't jitter like GPS does, used whenever you're on/near the
