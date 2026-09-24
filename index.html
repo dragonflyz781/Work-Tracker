@@ -1466,7 +1466,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   function roadHeadingNear(latlng, track){
     if(!track || track.length<2) return null;
     var idx = findNearestTrackIndex(latlng, track);
-    if(idx<0 || haversineMeters(latlng, track[idx]) > 45) return null;
+    if(idx<0 || haversineMeters(latlng, track[idx]) > 65) return null;
     var startIdx = Math.max(0, idx-1);
     var endIdx = Math.min(track.length-1, idx+3);
     if(startIdx===endIdx) return null;
@@ -2166,7 +2166,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     }
     if(heading==null && lastFix){
       var movedForHeading = haversineMeters(lastFix.latlng, latlng);
-      if(movedForHeading > 3){ heading = bearing(lastFix.latlng, latlng); headingSrc = 'moved'; }
+      if(movedForHeading > 1.2){ heading = bearing(lastFix.latlng, latlng); headingSrc = 'moved'; }
       else headingSrc = 'still ('+movedForHeading.toFixed(1)+'m)';
     }
     if(tracking && heading!=null){
@@ -2175,6 +2175,11 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     var hdgDebugEl = document.getElementById('hdgDebug');
     if(hdgDebugEl){
       hdgDebugEl.textContent = (heading!=null ? Math.round(smoothHeading)+'\u00b0' : '–') + ' ' + headingSrc + (tracking?'':' (off)');
+    }
+    if(liveMarker && liveMarker.getElement){
+      var iconElForWedge = liveMarker.getElement();
+      var wedgeEl = iconElForWedge && iconElForWedge.querySelector('.heading-wedge');
+      if(wedgeEl) wedgeEl.style.opacity = heading!=null ? '1' : '0.3';
     }
     if(followMe) map.setView(displayLatLng, map.getZoom(), { animate:false });
 
