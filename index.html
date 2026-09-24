@@ -872,6 +872,12 @@ body{
   line-height:1; pointer-events:none;
 }
 .compass-badge .tick{ font-size:9px; color:var(--accent); margin-top:-1px; }
+.hdg-debug{
+  position:absolute; left:50px; bottom:14px; z-index:410;
+  background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  padding:4px 8px; font-family:"Big Shoulders Display", sans-serif; font-size:12px;
+  font-weight:700; color:var(--text); box-shadow:var(--shadow); white-space:nowrap;
+}
 
 .fs-exit{
   position:absolute; top:10px; right:10px; z-index:470;
@@ -1165,6 +1171,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     <div class="sb-stat"><div class="sb-val" id="sbStop">–</div><div class="sb-lbl">NEXT STOP</div></div>
   </div>
   <div class="compass-badge" aria-label="Points to true north">N<span class="tick" id="compassTick">▲</span></div>
+  <div class="hdg-debug" id="hdgDebug"></div>
   <div class="zoom-cluster">
     <button class="map-fab zoom-btn" id="zoomInFab" aria-label="Zoom in">+</button>
     <button class="map-fab zoom-btn" id="zoomOutFab" aria-label="Zoom out">−</button>
@@ -2150,14 +2157,24 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     // panning first and rotating second (what this used to do) is exactly
     // what caused the map to visibly jump/jitter on every single update.
     var headingRoute = activeId ? routes[activeId] : null;
+    var headingSrc = 'none';
     var heading = headingRoute ? roadHeadingNear(latlng, headingRoute.track) : null;
-    if(heading==null) heading = (c.heading!=null && !isNaN(c.heading)) ? c.heading : null;
+    if(heading!=null) headingSrc = 'road';
+    if(heading==null){
+      heading = (c.heading!=null && !isNaN(c.heading)) ? c.heading : null;
+      if(heading!=null) headingSrc = 'device';
+    }
     if(heading==null && lastFix){
       var movedForHeading = haversineMeters(lastFix.latlng, latlng);
-      if(movedForHeading > 3) heading = bearing(lastFix.latlng, latlng);
+      if(movedForHeading > 3){ heading = bearing(lastFix.latlng, latlng); headingSrc = 'moved'; }
+      else headingSrc = 'still ('+movedForHeading.toFixed(1)+'m)';
     }
     if(tracking && heading!=null){
       map.setBearing(smoothHeadingDeg(heading));
+    }
+    var hdgDebugEl = document.getElementById('hdgDebug');
+    if(hdgDebugEl){
+      hdgDebugEl.textContent = (heading!=null ? Math.round(smoothHeading)+'\u00b0' : '–') + ' ' + headingSrc + (tracking?'':' (off)');
     }
     if(followMe) map.setView(displayLatLng, map.getZoom(), { animate:false });
 
