@@ -2121,6 +2121,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   var POS_TAU_MS = 220;      // how quickly the drawn position catches up with the predicted one
   var HEAD_TAU_MS = 350;     // same for the map rotation
   var MAX_PREDICT_MS = 2500; // never guess further ahead than this if fixes stop arriving
+  var fixHistory = [], lastTravelHeading = null, TRAVEL_MIN_M = 10; // metres moved before a direction counts
   var renderRunning = false, lastFrameT = 0, lastTileKick = 0;
 
   function angDiff(a, b){ return ((a - b + 540) % 360) - 180; }
@@ -2201,6 +2202,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   function resetSmoothing(){
     smoothLatLng = null; smoothHeading = null; targetHeading = null;
     lastFixPos = null; velLat = 0; velLng = 0;
+    fixHistory = []; lastTravelHeading = null;
   }
 
   function onPosition(pos){
@@ -2227,19 +2229,24 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     // computes correctly when it already knows the target bearing —
     // panning first and rotating second (what this used to do) is exactly
     // what caused the map to visibly jump/jitter on every single update.
-    var headingRoute = activeId ? routes[activeId] : null;
+    // Heading = the direction you are actually travelling across the map:
+    // the bearing from where you were a few metres back to where you are
+    // now (ignores the phone's own compass/GPS heading). While you're
+    // stopped or crawling it holds the last direction instead of spinning.
     var headingSrc = 'none';
-    var heading = headingRoute ? roadHeadingNear(latlng, headingRoute.track) : null;
-    if(heading!=null) headingSrc = 'road';
-    if(heading==null){
-      heading = (c.heading!=null && !isNaN(c.heading)) ? c.heading : null;
-      if(heading!=null) headingSrc = 'device';
+    var heading = null;
+    fixHistory.push({ latlng: latlng, t: pos.timestamp || Date.now() });
+    if(fixHistory.length > 40) fixHistory.shift();
+    for(var hi = fixHistory.length-2; hi >= 0; hi--){
+      var dHist = haversineMeters(fixHistory[hi].latlng, latlng);
+      if(dHist >= TRAVEL_MIN_M){
+        heading = bearing(fixHistory[hi].latlng, latlng);
+        headingSrc = 'travel';
+        lastTravelHeading = heading;
+        break;
+      }
     }
-    if(heading==null && lastFix){
-      var movedForHeading = haversineMeters(lastFix.latlng, latlng);
-      if(movedForHeading > 1.2){ heading = bearing(lastFix.latlng, latlng); headingSrc = 'moved'; }
-      else headingSrc = 'still ('+movedForHeading.toFixed(1)+'m)';
-    }
+    if(heading==null && lastTravelHeading!=null){ heading = lastTravelHeading; headingSrc = 'held'; }
     if(tracking && heading!=null){
       targetHeading = heading;   // the frame loop eases the map round to this
     }
