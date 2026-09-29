@@ -2114,33 +2114,104 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   // jumpy even when driving in a straight line. Every distance/off-route/
   // turn/stop calculation below still uses the real, unsmoothed fix — only
   // where something moves on screen does the smoothed value get used.
-  var smoothLatLng = null, smoothHeading = null;
-  var SMOOTH_POS = 0.35, SMOOTH_HEADING = 0.30;
-  function smoothPosition(latlng){
-    if(!smoothLatLng){ smoothLatLng = latlng.slice(); return smoothLatLng; }
-    smoothLatLng = [
-      smoothLatLng[0] + SMOOTH_POS*(latlng[0]-smoothLatLng[0]),
-      smoothLatLng[1] + SMOOTH_POS*(latlng[1]-smoothLatLng[1])
-    ];
-    return smoothLatLng;
+  var smoothLatLng = null, smoothHeading = null;   // what is drawn on screen right now
+  var lastFixPos = null, lastFixPerf = 0;          // latest real GPS fix + when it arrived
+  var velLat = 0, velLng = 0;                      // estimated velocity, degrees per ms
+  var targetHeading = null;
+  var POS_TAU_MS = 220;      // how quickly the drawn position catches up with the predicted one
+  var HEAD_TAU_MS = 350;     // same for the map rotation
+  var MAX_PREDICT_MS = 2500; // never guess further ahead than this if fixes stop arriving
+  var renderRunning = false, lastFrameT = 0, lastTileKick = 0;
+
+  function angDiff(a, b){ return ((a - b + 540) % 360) - 180; }
+
+  // Called for every real GPS fix: records where we are and how fast we're
+  // going. Nothing is drawn here — the frame loop below does the drawing.
+  function feedFix(latlng, ts, speedMps){
+    var nowP = performance.now();
+    if(lastFixPos && ts > lastFixPos.ts){
+      var dtMs = ts - lastFixPos.ts;
+      if(dtMs < 6000){
+        var vLa = (latlng[0]-lastFixPos.latlng[0])/dtMs;
+        var vLn = (latlng[1]-lastFixPos.latlng[1])/dtMs;
+        velLat = velLat*0.4 + vLa*0.6;   // blend so one noisy fix can't fling the dot
+        velLng = velLng*0.4 + vLn*0.6;
+      } else { velLat = 0; velLng = 0; }
+    }
+    // Standing still: GPS wobble looks like movement, so drop the velocity.
+    if(speedMps!=null && !isNaN(speedMps) && speedMps < 0.6){ velLat = 0; velLng = 0; }
+    lastFixPos = { latlng: latlng.slice(), ts: ts };
+    lastFixPerf = nowP;
+    if(!smoothLatLng) smoothLatLng = latlng.slice();
+    startRenderLoop();
   }
-  function smoothHeadingDeg(heading){
-    if(smoothHeading==null){ smoothHeading = heading; return smoothHeading; }
-    var diff = ((heading - smoothHeading + 540) % 360) - 180; // shortest signed turn
-    smoothHeading = (smoothHeading + SMOOTH_HEADING*diff + 360) % 360;
-    return smoothHeading;
+
+  function startRenderLoop(){
+    if(renderRunning) return;
+    renderRunning = true;
+    lastFrameT = performance.now();
+    requestAnimationFrame(renderFrame);
+  }
+
+  // Runs on every screen refresh (~60 fps). Predicts where the vehicle is
+  // *now* from the last fix plus its velocity, glides the dot and camera
+  // toward that point and eases the rotation toward the current heading.
+  // That's what makes the map move continuously like a real sat-nav rather
+  // than hopping once per GPS update.
+  function renderFrame(now){
+    if(!tracking || !lastFixPos || !smoothLatLng){ renderRunning = false; return; }
+    var dt = Math.min(100, Math.max(1, now - lastFrameT));
+    lastFrameT = now;
+
+    var ahead = Math.min(MAX_PREDICT_MS, now - lastFixPerf);
+    var tgtLat = lastFixPos.latlng[0] + velLat*ahead;
+    var tgtLng = lastFixPos.latlng[1] + velLng*ahead;
+    var k = 1 - Math.exp(-dt/POS_TAU_MS);
+    smoothLatLng = [
+      smoothLatLng[0] + (tgtLat - smoothLatLng[0])*k,
+      smoothLatLng[1] + (tgtLng - smoothLatLng[1])*k
+    ];
+
+    if(targetHeading!=null){
+      if(smoothHeading==null) smoothHeading = targetHeading;
+      else {
+        var kh = 1 - Math.exp(-dt/HEAD_TAU_MS);
+        smoothHeading = (smoothHeading + kh*angDiff(targetHeading, smoothHeading) + 360) % 360;
+      }
+      // Bearing first, then pan (the rotate plugin needs it in that order).
+      if(Math.abs(angDiff(smoothHeading, map.getBearing())) > 0.05) map.setBearing(smoothHeading);
+    }
+
+    if(liveMarker) liveMarker.setLatLng(smoothLatLng);
+
+    if(followMe && !map._animatingZoom){
+      // Cheap pan: shift the map pane by the tiny remaining offset instead of
+      // calling setView every frame (which resets the whole view and is far
+      // too heavy at 60 fps).
+      var off = map.latLngToContainerPoint(smoothLatLng).subtract(map.getSize().divideBy(2));
+      if(Math.abs(off.x) > 0.02 || Math.abs(off.y) > 0.02){
+        map._rawPanBy(off);
+        map.fire('move');
+        // Every so often let Leaflet settle and load newly exposed tiles.
+        if(now - lastTileKick > 400){ lastTileKick = now; map.fire('moveend'); }
+      }
+    }
+    requestAnimationFrame(renderFrame);
+  }
+  function resetSmoothing(){
+    smoothLatLng = null; smoothHeading = null; targetHeading = null;
+    lastFixPos = null; velLat = 0; velLng = 0;
   }
 
   function onPosition(pos){
     var c = pos.coords;
     var latlng = [c.latitude, c.longitude];
-    var displayLatLng = smoothPosition(latlng);
+    feedFix(latlng, pos.timestamp || Date.now(), c.speed);
+    var displayLatLng = smoothLatLng;
 
     if(!liveMarker){
       liveMarker = L.marker(displayLatLng, { icon: liveIcon(), zIndexOffset:1000 }).addTo(map);
       liveMarker.bindPopup('');
-    } else {
-      liveMarker.setLatLng(displayLatLng);
     }
     liveMarker.setPopupContent('You are here<br><a class="maps-link" target="_blank" rel="noopener" href="'+mapsLink(latlng[0],latlng[1])+'">Open in Maps ↗</a>');
 
@@ -2170,18 +2241,18 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       else headingSrc = 'still ('+movedForHeading.toFixed(1)+'m)';
     }
     if(tracking && heading!=null){
-      map.setBearing(smoothHeadingDeg(heading));
+      targetHeading = heading;   // the frame loop eases the map round to this
     }
     var hdgDebugEl = document.getElementById('hdgDebug');
     if(hdgDebugEl){
-      hdgDebugEl.textContent = (heading!=null ? Math.round(smoothHeading)+'\u00b0' : '–') + ' ' + headingSrc + (tracking?'':' (off)');
+      hdgDebugEl.textContent = (heading!=null && smoothHeading!=null ? Math.round(smoothHeading)+'\u00b0' : '–') + ' ' + headingSrc + (tracking?'':' (off)');
     }
     if(liveMarker && liveMarker.getElement){
       var iconElForWedge = liveMarker.getElement();
       var wedgeEl = iconElForWedge && iconElForWedge.querySelector('.heading-wedge');
       if(wedgeEl) wedgeEl.style.opacity = heading!=null ? '1' : '0.3';
     }
-    if(followMe) map.setView(displayLatLng, map.getZoom(), { animate:false });
+    // (camera follow now happens every frame in renderFrame)
 
     var mph = null;
     if(c.speed!==null && c.speed!==undefined && !isNaN(c.speed)){
@@ -2325,7 +2396,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       gpsNote.textContent = 'Finding your location…';
       try{
         watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
-          enableHighAccuracy:true, maximumAge:500, timeout:15000
+          enableHighAccuracy:true, maximumAge:0, timeout:15000
         });
       }catch(e){
         gpsNote.textContent = 'Could not start GPS tracking.';
@@ -2338,7 +2409,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       gpsNote.textContent = '';
       navBanner.style.display = 'none';
       map.setBearing(0);
-      smoothLatLng = null; smoothHeading = null;
+      resetSmoothing();
       if(document.body.classList.contains('satnav-mode') && typeof endSatnav==='function') endSatnav();
       if(watchId!==null && navigator.geolocation){ navigator.geolocation.clearWatch(watchId); watchId=null; }
     }
@@ -2398,7 +2469,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       previewBtn.textContent = '🎬  Preview this route';
       tracking = false;
       map.setBearing(0);
-      smoothLatLng = null; smoothHeading = null;
+      resetSmoothing();
     }
     document.body.classList.remove('satnav-mode');
     satnavBtn.classList.remove('on');
@@ -2470,7 +2541,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
     previewBtn.classList.remove('on');
     previewBtn.textContent = '🎬  Preview this route';
     map.setBearing(0);
-    smoothLatLng = null; smoothHeading = null;
+    resetSmoothing();
     endSatnav();
   }
   previewBtn.addEventListener('click', function(){
