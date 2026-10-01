@@ -2198,7 +2198,11 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
         smoothHeading = (smoothHeading + kh*angDiff(targetHeading, smoothHeading) + 360) % 360;
       }
       // Bearing first, then pan (the rotate plugin needs it in that order).
-      if(Math.abs(angDiff(smoothHeading, map.getBearing())) > 0.05) map.setBearing(smoothHeading);
+      // The rotate plugin's bearing turns the map clockwise, so to put the
+      // direction of travel at the top of the screen the bearing must be
+      // the opposite of the heading (heading 90 = east -> bearing 270).
+      var mapBrg = (360 - smoothHeading) % 360;
+      if(Math.abs(angDiff(mapBrg, map.getBearing())) > 0.05) map.setBearing(mapBrg);
     }
 
     if(liveMarker) liveMarker.setLatLng(smoothLatLng);
