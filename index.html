@@ -1241,10 +1241,10 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
   <div class="pax-context" id="paxContext"></div>
 
   <button class="track-btn satnav-btn" id="satnavBtn">🛰️  Start Sat-Nav mode</button>
-  <button class="track-btn" id="trackBtn">▶  Start GPS tracking</button>
+  <button class="track-btn" id="trackBtn" style="display:none">▶  Start GPS tracking</button>
   <button class="track-btn nav-btn" id="firstStopBtn">📍  Directions to first stop</button>
   <div class="gps-note" id="guideNote"></div>
-  <button class="track-btn nav-btn" id="navBtn">🧭  Navigate this route in Google Maps ↗</button>
+  <button class="track-btn nav-btn" id="navBtn" style="display:none">🧭  Navigate this route in Google Maps ↗</button>
   <button class="track-btn nav-btn" id="previewBtn">🎬  Preview this route</button>
   <div class="gps-note" id="gpsNote"></div>
 </div>
@@ -2511,6 +2511,7 @@ body.satnav-mode .fs-pax-wrap{ bottom:calc(84px + env(safe-area-inset-bottom, 0p
       resetSmoothing();
     }
     snWake(false);
+    if(tracking) trackBtn.click();   // GPS has no button of its own now, so ending Sat-Nav stops it
     document.body.classList.remove('satnav-mode');
     satnavBtn.classList.remove('on');
     satnavBtn.textContent = '🛰️  Start Sat-Nav mode';
